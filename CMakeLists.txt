@@ -1156,6 +1156,11 @@ src/script/C4ValueMap.h
 add_subdirectory(thirdparty/blake2)
 set_property(TARGET blake2 PROPERTY FOLDER "Third-party libraries")
 target_link_libraries(libc4script blake2 libmisc)
+# The bundled blake2.h must win over any system-wide one (e.g. Homebrew's libb2,
+# which declares blake2b() with a different argument order). Interface include
+# dirs from linked targets are appended last, so prepend it explicitly.
+target_include_directories(libc4script BEFORE PRIVATE
+	$<TARGET_PROPERTY:blake2,INTERFACE_INCLUDE_DIRECTORIES>)
 
 add_library(libopenclonk STATIC
 	src/c4group/C4Extra.cpp
