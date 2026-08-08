@@ -1260,7 +1260,13 @@ if(NOT HEADLESS_ONLY AND NOT C4GROUP_TOOL_ONLY)
 		libopenclonk
 	)
 	if(USE_COCOA)
-		target_link_libraries(openclonk "-framework Cocoa -framework AppKit -framework Quartz -framework OpenAL -framework AudioToolbox")
+		target_link_libraries(openclonk "-framework Cocoa -framework AppKit -framework Quartz -framework AudioToolbox")
+		# Only fall back to Apple's deprecated OpenAL framework if FindAudio did
+		# not turn up a real implementation; linking both gives us two OpenALs
+		# in one process and silence.
+		if(NOT OpenAL_LIBRARIES)
+			target_link_libraries(openclonk "-framework OpenAL")
+		endif()
 	endif()
 
 	if(WITH_QT_EDITOR)

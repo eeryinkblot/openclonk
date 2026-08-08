@@ -74,6 +74,20 @@ macro(__FINDAUDIO_FINDOPENAL)
 					set(OpenAL_FOUND FALSE)
 				endif()
 			endif()
+			if (APPLE)
+				# Prefer a real OpenAL implementation (openal-soft) over Apple's
+				# system framework: that one is stuck at OpenAL 1.1, has no EFX,
+				# and is deprecated. Frameworks are searched first on Apple, so
+				# flip the order or we just find OpenAL.framework again. If no
+				# real implementation exists the caller falls back to it.
+				set(__findaudio_fw ${CMAKE_FIND_FRAMEWORK})
+				set(CMAKE_FIND_FRAMEWORK LAST)
+				find_library(OpenAL_LIBRARIES NAMES openal)
+				set(CMAKE_FIND_FRAMEWORK ${__findaudio_fw})
+				if(OpenAL_LIBRARIES MATCHES "\\.framework$")
+					unset(OpenAL_LIBRARIES CACHE)
+				endif()
+			endif()
 			if(Alut_INCLUDE_DIRS AND Alut_LIBRARY)
 				set(Alut_FOUND TRUE)
 				set(Alut_LIBRARIES ${Alut_LIBRARY})
