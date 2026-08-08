@@ -1429,9 +1429,11 @@ if (APPLE)
 	# for good measure - seems to be part of default OSX installation
 	# linking with static freetype library requires it
 	find_package("BZip2" REQUIRED)
-	target_link_libraries(openclonk ${BZIP2_LIBRARIES})
+	if(TARGET openclonk)
+		target_link_libraries(openclonk ${BZIP2_LIBRARIES})
+	endif()
 
-	if(CMAKE_GENERATOR STREQUAL Xcode)
+	if(CMAKE_GENERATOR STREQUAL Xcode AND TARGET openclonk)
 		set(CMAKE_XCODE_ATTRIBUTE_GCC_PRECOMPILE_PREFIX_HEADER YES)
 		set_target_properties(openclonk PROPERTIES XCODE_ATTRIBUTE_GCC_PRECOMPILE_PREFIX_HEADER YES)
 		set_target_properties(openclonk PROPERTIES XCODE_ATTRIBUTE_GCC_PFE_FILE_C_DIALECTS "c++14 objective-c++14")
@@ -1449,12 +1451,14 @@ if (APPLE)
 		set(CMAKE_XCODE_ATTRIBUTE_CLANG_CXX_LIBRARY "libc++")
 	endif()
 
-	add_custom_command(TARGET openclonk
-		POST_BUILD COMMAND
-		"${CMAKE_CURRENT_SOURCE_DIR}/tools/osx_bundle_libs"
-		"$<$<BOOL:${CMAKE_SYSROOT}>:--sysroot=${CMAKE_SYSROOT}>"
-		"$<TARGET_FILE:openclonk>"
-	)
+	if(TARGET openclonk)
+		add_custom_command(TARGET openclonk
+			POST_BUILD COMMAND
+			"${CMAKE_CURRENT_SOURCE_DIR}/tools/osx_bundle_libs"
+			"$<$<BOOL:${CMAKE_SYSROOT}>:--sysroot=${CMAKE_SYSROOT}>"
+			"$<TARGET_FILE:openclonk>"
+		)
+	endif()
 endif()
 
 ############################################################################
@@ -1569,7 +1573,7 @@ if(NOT C4GROUP_TOOL_ONLY)
 	endif()
 
 	foreach(group ${OC_C4GROUPS})
-		if (APPLE)
+		if (APPLE AND TARGET openclonk)
 			if (CMAKE_GENERATOR STREQUAL Xcode)
 				add_custom_command(TARGET openclonk
 					POST_BUILD COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tools/osx_pack_gamedata.sh"
@@ -1601,7 +1605,7 @@ if(NOT C4GROUP_TOOL_ONLY)
 	endforeach()
 endif()
 
-if(NOT APPLE)
+if(NOT APPLE OR NOT TARGET openclonk)
 	if(NOT HEADLESS_ONLY)
 		install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/planet/Music.ocg DESTINATION share/games/openclonk)
 	endif()
