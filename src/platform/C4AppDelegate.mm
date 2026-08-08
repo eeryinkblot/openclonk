@@ -295,6 +295,7 @@
 #  undef main
 #endif
 
+#ifndef USE_CONSOLE
 static void _ExceptionHandler(NSException* exception)
 {
 	NSAlert* alert = [NSAlert alertWithMessageText:[exception description] defaultButton:nil alternateButton:nil otherButton:nil informativeTextWithFormat:@""];
@@ -307,3 +308,6 @@ int main (int argc, const char **argv)
 	NSSetUncaughtExceptionHandler(&_ExceptionHandler);
 	return NSApplicationMain(argc, argv);
 }
+#endif // !USE_CONSOLE
+/* Console builds (openclonk-server) must not start an AppKit event loop -
+   they use the portable main() from src/game/ClonkMain.cpp instead. */

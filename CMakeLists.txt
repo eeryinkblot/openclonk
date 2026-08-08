@@ -1291,6 +1291,10 @@ if(NOT C4GROUP_TOOL_ONLY)
 		src/platform/C4AppT.cpp
 		src/platform/C4StdInProc.cpp
 		src/platform/C4StdInProc.h
+		# On Apple OC_SYSTEM_SOURCES supplies the Cocoa main() from
+		# C4AppDelegate.mm, which is compiled out for USE_CONSOLE builds.
+		# The console server needs the portable entry point instead.
+		$<$<BOOL:${APPLE}>:src/game/ClonkMain.cpp>
 	)
 	target_compile_definitions(openclonk-server PRIVATE "USE_CONSOLE")
 
