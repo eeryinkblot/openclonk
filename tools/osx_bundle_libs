@@ -44,6 +44,54 @@ _frameworks_folder_path="${FRAMEWORKS_FOLDER_PATH:-${_contents_folder}/Framework
 # Get tool names/paths from the environment in case we're cross compiling
 _otool="${OTOOL:-otool}"
 _install_name_tool="${INSTALL_NAME_TOOL:-install_name_tool}"
+_codesign="${CODESIGN:-codesign}"
+
+# install_name_tool invalidates whatever code signature an image carried. On
+# arm64 that is fatal rather than cosmetic: the kernel refuses to map an image
+# whose signature does not match, so the process dies with SIGKILL (Code
+# Signature Invalid) before main() runs. Re-sign ad-hoc after every edit.
+resign() {
+	if command -v "${_codesign}" >/dev/null 2>&1; then
+		"${_codesign}" --force --sign - "$1" >/dev/null 2>&1 || \
+			echo "Warning: could not re-sign '$1'" >&2
+	fi
+}
+
+# LC_RPATH entries relative to @loader_path were resolved against the library's
+# original directory and point nowhere once it sits in Frameworks/. Re-anchor
+# them to where they used to resolve, and add @loader_path so siblings we
+# bundled are found first.
+#
+# Libraries that dlopen() their real backend rely on this: Homebrew's SDL2 is
+# sdl2-compat, which finds SDL3 solely through such an rpath and aborts with a
+# modal error dialog when it cannot.
+fixup_rpaths() {
+	local _bundled="$1"
+	local _orig_dir="$2"
+	local _rpath _tail _resolved
+
+	"${_otool}" -l "${_bundled}" | awk '$1 == "path" { print $2 }' | \
+	while read _rpath; do
+		case "${_rpath}" in
+			@loader_path)
+				continue
+				;;
+			@loader_path/*)
+				_tail="${_rpath#@loader_path/}"
+				_resolved="$(cd "${_orig_dir}/${_tail}" 2>/dev/null && pwd -P)" || true
+				if [ -n "${_resolved}" ]; then
+					"${_install_name_tool}" -rpath "${_rpath}" "${_resolved}" "${_bundled}"
+				fi
+				;;
+		esac
+	done
+
+	# Only add @loader_path if it isn't already there; a duplicate is an error.
+	if ! "${_otool}" -l "${_bundled}" | awk '$1 == "path" { print $2 }' | \
+		grep -qx '@loader_path'; then
+		"${_install_name_tool}" -add_rpath "@loader_path" "${_bundled}"
+	fi
+}
 
 if [ -n "${TARGET_BUILD_DIR}" ]; then
 	cd "${TARGET_BUILD_DIR}"
@@ -112,6 +160,10 @@ bundle_dependencies() {
 		# Set a new install name for this dylib
 		"${_install_name_tool}" -id "${_id}" "${_bundle_path}"
 
+		# Re-anchor rpaths against the directory the library came from
+		fixup_rpaths "${_bundle_path}" \
+			"$(cd "$(dirname "${_library_path}")" && pwd -P)"
+
 		# Also change the reference inside the application itself
 		if [ "${_executable_path}" != "${_object_path}" ]; then
 			"${_install_name_tool}" -change "${_library_name}" "${_id}" "${_executable_path}"
@@ -124,3 +176,11 @@ bundle_dependencies() {
 
 mkdir -p "${_frameworks_folder_path}"
 bundle_dependencies "${_executable_path}"
+
+# Sign only once everything has been rewritten, nested images before the
+# executable that loads them.
+echo "Re-signing bundled libraries..."
+for _bundled in "${_frameworks_folder_path}"/*; do
+	[ -f "${_bundled}" ] && resign "${_bundled}"
+done
+resign "${_executable_path}"
