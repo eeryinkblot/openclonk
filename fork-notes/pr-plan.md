@@ -92,6 +92,22 @@ both are build-system corrections with no runtime effect on a working build.
 `c02c12e38` also restores the `groups` target on macOS, which is what makes the
 game data packable in a headless build.
 
+### PR 4b — macOS: report the actual architecture
+
+| | |
+| --- | --- |
+| Commits | `05014153a` |
+| Files | `src/platform/PlatformAbstraction.h` |
+| Effect | An arm64 build stops announcing itself as `mac-x86` |
+
+Self-contained and independent of everything else. Small enough to fold into
+PR 4 if you would rather not open a separate one, though it is a source change
+rather than a build-system one.
+
+Worth stating in the PR text that the existing `mac-x86` value is deliberately
+untouched: it is a lookup key on the league and update servers, and Intel Macs
+have always reported it despite being x86_64.
+
 ### PR 5 — macOS: audio and app bundling
 
 | | |

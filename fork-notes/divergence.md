@@ -401,6 +401,52 @@ is no longer available from Homebrew and the editor is not built.
 
 ---
 
+## 9. `05014153a` — arm64 builds announced themselves as mac-x86
+
+**Files:** `src/platform/PlatformAbstraction.h`
+
+### Motivation
+
+`C4_OS` had one value for all of Apple, so an Apple Silicon build reported
+`mac-x86`. Windows and Linux distinguish their architectures
+(`win-x86_64`/`win-x86`, `linux-x86_64`/`linux-x86`); Apple did not.
+
+The string is not merely cosmetic. It appears in the startup log and the CTCP
+VERSION reply, but also as the `platform=` query parameter in:
+
+| Call site | Compiled here? |
+| --- | --- |
+| `C4StartupNetDlg.cpp:875` — league server | **yes** |
+| `C4StartupNetDlg.cpp:1274` — update server | no, inside `#ifdef WITH_AUTOMATIC_UPDATE` |
+| `C4UpdateDlg.cpp:321` — update server | no, whole file is behind that option |
+
+### Technical effect
+
+Adds an `__aarch64__` case yielding `mac-arm64`, and nothing else.
+
+### Why the existing value was left alone
+
+Intel Macs have always reported `mac-x86` even when built for x86_64.
+"Correcting" that to `mac-x86_64` would change what every existing Intel build
+sends to servers that may key on it, potentially breaking their update lookup.
+For arm64 the question does not arise — no such build has ever existed, so
+nothing is registered under either name.
+
+### Compatibility
+
+None at risk. `C4_OS` is never compared anywhere in the tree — no `SEqual`, no
+`strcmp`, no `==` — and is not part of the network protocol, any handshake, or
+the sync check. Cross-platform play is unaffected.
+
+### Not changed
+
+The startup line reads `Version: 9.0-alpha mac mac-arm64`. The first `mac`
+comes from `cmake/Version.cmake:43` appending it to `C4VERSION`, which
+`C4Application.cpp:98` then logs next to `C4_OS`. Upstream looks the same on
+every platform (`win win-x86_64`), so the redundancy was left as it is.
+
+---
+
 ## Not addressed
 
 Known, deliberately left alone:
@@ -408,7 +454,7 @@ Known, deliberately left alone:
 | Issue | Where |
 | --- | --- |
 | `c4group` exits 0 after "Pack failed" | `src/c4group/C4GroupMain.cpp` |
-| Version line reports `mac-x86` on arm64 | cosmetic |
+| Redundant `mac mac-arm64` in the version line | `cmake/Version.cmake`, upstream behaviour on all platforms |
 | Bundle resource seal stale after data packing | POST_BUILD ordering in `CMakeLists.txt` |
 | `tests` / `aul_test` cannot be built | gtest/gmock sources not present |
 | CI is dead (Travis, AppVeyor with VS 2017) | `.travis.yml`, `appveyor.yml` |
