@@ -2,6 +2,23 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## This is a fork
+
+`eeryinkblot/openclonk`, carrying macOS / Apple Silicon fixes on top of upstream
+`openclonk/openclonk`. Remotes: `origin` is the fork, `upstream` is the project.
+
+- `fork-notes/divergence.md` — what every deviation does and why. **Read it before
+  touching the macOS platform layer**; several changes exist because the upstream code
+  fails silently rather than loudly.
+- `fork-notes/pr-plan.md` — how the commits group into eventual pull requests.
+
+`CLAUDE.md` and `fork-notes/` are fork-local and must never end up in a PR branch.
+Build PR branches by cherry-picking onto `upstream/master`, never by branching off
+this `master`.
+
+Upstream has been near-dormant since 2021 and its CI (Travis, AppVeyor) is dead, so
+nothing here is validated by anyone else. Verify changes by running the thing.
+
 ## What this is
 
 OpenClonk is a 2D multiplayer action game engine (C++14, CMake). The repository holds two
@@ -39,13 +56,69 @@ to `NativeToolsExport.cmake`, which you point at with `-DIMPORT_NATIVE_TOOLS=`.
 
 `tools/default.nix` builds the whole thing under Nix (`nix-build tools -A ...`, `withEditor` toggles Qt).
 
+### Building on this machine (macOS / Apple Silicon)
+
+Two build directories are kept side by side; both are gitignored via `/build*`.
+
+```sh
+# headless: engine-less server, c4group, c4script. Few dependencies.
+/opt/homebrew/bin/cmake -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo -DHEADLESS_ONLY=ON .
+/opt/homebrew/bin/cmake --build build -j8
+/opt/homebrew/bin/cmake --build build --target groups     # pack planet/ (13 groups, ~115 MB)
+
+# playable: openclonk.app with graphics and sound
+/opt/homebrew/bin/cmake -B build-gui -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+    -DHEADLESS_ONLY=OFF -DCMAKE_PREFIX_PATH=/opt/homebrew/opt/openal-soft .
+/opt/homebrew/bin/cmake --build build-gui -j8
+```
+
+**`cmake` is not on `PATH`** — use `/opt/homebrew/bin/cmake`.
+
+**`CMAKE_PREFIX_PATH` matters.** openal-soft is keg-only; without that flag `FindAudio`
+finds no real OpenAL and falls back to Apple's deprecated framework (no EFX). Check the
+configure output for `Using Audio toolkit: OpenAL`, and the runtime log for
+`OpenAL extensions loaded. Available: AL_EFFECT_REVERB, ...` — if it says
+`ALExt: No efx extensions available`, the wrong OpenAL got linked.
+
+Dependencies (`brew install`): `cmake libepoxy openal-soft miniupnpc freealut`, plus the
+usual `libpng jpeg-turbo freetype libogg libvorbis sdl2 curl`. **All four of OpenAL,
+ALUT, and Ogg/Vorbis must be found** or `FindAudio` silently selects no audio at all.
+
+Not available here:
+
+- **Qt5** is gone from Homebrew, so `WITH_QT_EDITOR` is off and the editor is not built.
+  Editor code paths in `src/editor/` are therefore untested by anything done in this fork.
+- **gtest/gmock sources** are not installed, so the `tests` and `aul_test` targets do not
+  exist. Pass `-DGTEST_ROOT=` / `-DGMOCK_ROOT=` pointing at *sources* to get them.
+
+### Running
+
+```sh
+open build-gui/openclonk.app                                    # play
+./build/openclonk-server --language=US planet/Tests.ocf/Movement.ocs Test.ocp
+```
+
+The engine log goes to `~/Library/Application Support/OpenClonk/OpenClonk.log`, **not**
+to stdout when launched as a bundle. Config lives in
+`~/Library/Preferences/org.openclonk.openclonk.config`.
+
+That config file is a trap worth knowing: the engine writes `Sound=0` / `Music=0`
+permanently whenever it starts without working audio — a headless run is enough — and
+never revisits it. Symptom is total silence with no error anywhere and correct volume
+values. Check `[Sound]` there before debugging audio libraries.
+
+Two harmless log lines: `Error loading player "…/Test.ocp"` (the file does not exist,
+the engine substitutes a stand-in) and, in headless builds, `Error at sound file.`
+
 ## Tests
 
 Two independent test layers.
 
 **C++ unit tests (GoogleTest/GMock).** Both targets are `EXCLUDE_FROM_ALL`, so name them explicitly.
 CMake must find gtest/gmock *sources* (`gtest-all.cc`, `gmock-all.cc`), not just headers — pass
-`-DGTEST_ROOT=` / `-DGMOCK_ROOT=` if they are not in `/usr/src/gtest`.
+`-DGTEST_ROOT=` / `-DGMOCK_ROOT=` if they are not in `/usr/src/gtest`. **Not currently available
+on this machine**, so neither target exists in `build/` or `build-gui/`; nothing in this fork has
+been checked against them.
 
 ```sh
 cmake --build build --target tests aul_test StdMeshMath
