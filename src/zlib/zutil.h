@@ -130,7 +130,10 @@ extern const char * const z_errmsg[10]; /* indexed by 2-zlib_error */
 #  define OS_CODE  0x07
 #  if defined(__MWERKS__) && __dest_os != __be_os && __dest_os != __win32_os
 #    include <unix.h> /* for fdopen */
-#  else
+#  elif !defined(__APPLE__)
+     /* Classic Mac OS had no fdopen(). Darwin does, and its SDK defines
+        TARGET_OS_MAC=1, so without this guard fdopen() gets defined away to
+        NULL and every compressed write silently fails. */
 #    ifndef fdopen
 #      define fdopen(fd,mode) NULL /* No fdopen() */
 #    endif
