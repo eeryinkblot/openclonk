@@ -210,8 +210,18 @@ int32_t mouseButtonFromEvent(NSEvent* event, DWORD* modifierFlags)
 	int y = actualSizeY - mouse.y;
 
 	C4Viewport* viewport = self.controller.viewport;
-	if (::MouseControl.IsViewport(viewport) && Console.EditCursor.GetMode() == C4CNS_ModePlay)
-	{	
+
+	// The edit cursor only ever leaves C4CNS_ModeEdit when an editor console
+	// switches it, so requiring C4CNS_ModePlay here drops every mouse event in
+	// a fullscreen build. Windows and SDL dispatch unconditionally from their
+	// fullscreen paths and apply this condition only to editor viewports; do
+	// the same instead of gating both on it.
+	bool const to_gui = !Application.isEditor ||
+		(::MouseControl.IsViewport(viewport) &&
+		 Console.EditCursor.GetMode() == C4CNS_ModePlay);
+
+	if (to_gui)
+	{
 		DWORD keyMask = flags;
 		if ([event type] == NSEventTypeScrollWheel)
 		{
