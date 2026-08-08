@@ -156,7 +156,14 @@ inline int stricmp(const char *s1, const char *s2)
 #define C4_OS "linux-x86"
 #endif
 #elif defined(__APPLE__)
+#if defined(__aarch64__)
+#define C4_OS "mac-arm64"
+#else
+// Intel Macs have always reported "mac-x86" even when built for x86_64, and
+// the string is sent to the league and update servers as a query parameter.
+// Leave it alone so existing builds keep matching whatever is registered there.
 #define C4_OS "mac-x86"
+#endif
 #else
 #define C4_OS ""
 #endif
