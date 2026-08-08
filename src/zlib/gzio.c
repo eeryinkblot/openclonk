@@ -11,7 +11,7 @@
 /* with new magic. Reads files with old or new magic. Does not   */
 /* accept uncompressed (transparent) files.                      */
 
-#define _POSIX_C_SOURCE 1 /* for fdopen() */
+#define _POSIX_C_SOURCE 200809L /* for fdopen(); POSIX.1-1990 hides vsnprintf() */
 #define _BSD_SOURCE       /* for vsnprintf */
 
 #include <stdio.h>
