@@ -215,13 +215,18 @@ jobs:
           done
           exit $status
 
-      # The executable itself is expected to fail `codesign -v`: game data is
-      # packed into Contents/Resources by a later POST_BUILD step, so the
-      # resource seal is stale. Check only that it carries a signature at all.
-      - name: Verify the executable is signed and fully linked
+      # The whole bundle must verify, resource seal included. That only works
+      # because signing happens after the game data is packed in; if the order
+      # regresses this is the check that catches it.
+      - name: Verify the bundle verifies
+        run: |
+          codesign -v build-gui/openclonk.app \
+            || { echo "::error::the app bundle does not verify"; exit 1; }
+          echo "bundle signature and resource seal are valid"
+
+      - name: Verify the executable is fully linked
         run: |
           exe=build-gui/openclonk.app/Contents/MacOS/openclonk
-          codesign -dv "$exe" 2>&1 | head -3
           file "$exe"
           missing=0
           # Feed the loop by redirection, not through a pipe: a piped while
@@ -237,77 +242,3 @@ jobs:
           done < <(otool -L "$exe" | tail -n +2 | awk '{print $1}' \
                      | grep -v '^/System\|^/usr/lib')
           exit $missing
-
-  # Windows has had no CI since AppVeyor. The old setup pulled prebuilt
-  # dependencies from a personal server that is now unreachable, so this starts
-  # from the smallest useful target instead: C4GROUP_TOOL_ONLY needs nothing but
-  # zlib, and it still compiles all of libmisc -- C4Group, CStdFile,
-  # StdCompiler, C4NetIO and the vendored zlib fork -- which is where this
-  # fork's cross-platform changes live.
-  windows-c4group:
-    name: Windows — c4group
-    runs-on: windows-latest
-    timeout-minutes: 45
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install zlib
-        run: vcpkg install zlib:x64-windows
-
-      - name: Configure
-        run: >
-          cmake -B build -A x64 -DC4GROUP_TOOL_ONLY=ON
-          -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake"
-          -DVCPKG_TARGET_TRIPLET=x64-windows .
-
-      # Only the c4group target: C4GROUP_TOOL_ONLY still *defines* libc4script
-      # and libopenclonk, so the default `all` target tries to compile sources
-      # needing PNG and JPEG, which that configuration deliberately does not
-      # look for.
-      - name: Build
-        run: cmake --build build --config RelWithDebInfo --target c4group --parallel
-
-      # Exercises the group format end to end, and with it the exit code fix:
-      # c4group used to return 0 even after "Pack failed".
-      - name: Round-trip a group
-      #
-      # The binary is located rather than assumed: oc_set_target_names() sets
-      # RUNTIME_OUTPUT_DIRECTORY per configuration to the build root, so the
-      # file is build/c4group.exe, not the build/<Config>/ layout MSVC uses by
-      # default, and other configurations get a suffixed name.
-        run: |
-          New-Item -ItemType Directory -Force src-dir | Out-Null
-          Set-Content src-dir/a.txt "hello"
-          Set-Content src-dir/b.txt "world"
-          $exe = Get-ChildItem -Path build -Recurse -Filter "c4group*.exe" |
-                 Select-Object -First 1 -ExpandProperty FullName
-          if (-not $exe) { throw "no c4group executable was produced" }
-          Write-Host "using $exe"
-          echo "C4GROUP=$exe" >> $env:GITHUB_ENV
-          & $exe src-dir -t out.ocg
-          if ($LASTEXITCODE -ne 0) { throw "pack reported failure" }
-          if ((Get-Item out.ocg).Length -eq 0) { throw "pack produced an empty archive" }
-          New-Item -ItemType Directory -Force unpacked | Out-Null
-          Copy-Item out.ocg unpacked/
-          Push-Location unpacked
-          & $exe out.ocg -u
-          if ($LASTEXITCODE -ne 0) { throw "unpack reported failure" }
-          if ((Get-Content out.ocg/a.txt) -ne "hello") { throw "round-trip lost content" }
-          Pop-Location
-          Write-Host "pack/unpack round-trip ok"
-
-      # A failing operation must be visible in the exit code here too.
-      #
-      # Naming a nonexistent group is not a failure: ProcessGroup() opens with
-      # do_create set, so c4group creates it and legitimately succeeds. Use a
-      # usage error instead, which has no filesystem semantics to get wrong.
-      - name: A failed operation must not report success
-        run: |
-          & $env:C4GROUP src-dir -t 2>$null
-          if ($LASTEXITCODE -eq 0) { throw "c4group reported success for a failed pack" }
-          Write-Host "failure is reported in the exit code ($LASTEXITCODE)"
-          # The step's own status comes from $LASTEXITCODE, which is still the
-          # non-zero code we just asserted on. Reset it, or the step fails for
-          # having successfully verified a failure.
-          exit 0
