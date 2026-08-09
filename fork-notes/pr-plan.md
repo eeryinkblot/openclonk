@@ -145,6 +145,20 @@ that "Unknown option" and "Error forking" now fail where they used to warn.
 One line plus a comment, platform-independent, and trivially verifiable by
 running `ctest -N` before and after. The easiest of all the clusters to argue.
 
+### PR 8 — remove the dead CI configuration
+
+| | |
+| --- | --- |
+| Commits | `35aa52f40` |
+| Files | `.travis.yml`, `appveyor.yml`, `tools/ci/`, `tools/generate_license_headers.cpp` |
+| Effect | Deletes configuration for two services that no longer run |
+
+**The most opinionated cluster, and the only one that deletes rather than
+fixes.** A maintainer may reasonably want to keep the files as a record of how
+the project used to build, or may not want them gone without a replacement
+landing first. Pair it with the workflow, or drop it — nothing else depends on
+it.
+
 ### PR 5 — macOS: audio and app bundling
 
 | | |

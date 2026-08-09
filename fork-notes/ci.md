@@ -1,8 +1,9 @@
 # Continuous integration
 
-`.github/workflows/build.yml`. Upstream's CI has been dead for years —
-`.travis.yml` targets travis-ci.org, which no longer exists, and `appveyor.yml`
-pins Visual Studio 2017 — so nothing had verified a build since roughly 2020.
+`.github/workflows/build.yml`. Upstream's CI had been dead for years —
+`.travis.yml` targeted travis-ci.org, which no longer exists, and `appveyor.yml`
+pinned Visual Studio 2017 — so nothing had verified a build since roughly 2020.
+Both are removed in this fork; this workflow replaces them.
 
 Triggers: push to `master`, any pull request, and manual dispatch. Runs on the
 same ref cancel each other (`concurrency` with `cancel-in-progress`), and both
@@ -97,7 +98,8 @@ machine ever ticks. See [ADR-009](decisions.md#adr-009--hold-stdin-open-in-ci-in
 
 ## What it does not cover
 
-- **Windows.** No job; `appveyor.yml` is still there and still broken.
+- **Windows.** No job at all, and the old AppVeyor configuration is gone rather
+  than fixed. Anyone wanting Windows coverage starts from scratch.
 - **The Qt editor.** Qt5 is no longer available from Homebrew, so
   `WITH_QT_EDITOR` is off everywhere and `src/editor/` is not compiled.
 - **Actually running the GUI.** `macos-app` builds and inspects the bundle but

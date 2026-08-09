@@ -566,6 +566,34 @@ None. Adding a test to the manifest cannot affect a build.
 
 ---
 
+## 13. `35aa52f40` — the dead CI configuration
+
+**Files:** `.travis.yml`, `appveyor.yml`, `tools/ci/`, `tools/generate_license_headers.cpp`
+
+### Motivation
+
+`.travis.yml` targets travis-ci.org, shut down in 2021. `appveyor.yml` pins
+Visual Studio 2017. Neither has run in years and neither would run if
+triggered. `tools/ci/` holds four PowerShell scripts referenced from
+`appveyor.yml` and nowhere else.
+
+`generate_license_headers.cpp` additionally shelled out to the `appveyor` CLI
+to surface an error, because "Appveyor/msvc won't show stderr messages". Inert
+outside that service, and there is no service.
+
+### Technical effect
+
+All removed; `.github/workflows/build.yml` replaces them. Verified with a full
+rebuild plus a `groups` run, since the license tool is a build-time code
+generator and a mistake there would break every binary.
+
+### Risk
+
+Deleting a CI config cannot affect a build. The only code change is in a
+build-time tool, and `bail()` still prints to stderr and exits non-zero.
+
+---
+
 ## Not addressed
 
 Known, deliberately left alone:
@@ -574,7 +602,6 @@ Known, deliberately left alone:
 | --- | --- |
 | Redundant `mac mac-arm64` in the version line | `cmake/Version.cmake`, upstream behaviour on all platforms |
 | Bundle resource seal stale after data packing | POST_BUILD ordering in `CMakeLists.txt` |
-| CI is dead (Travis, AppVeyor with VS 2017) | `.travis.yml`, `appveyor.yml` |
 
 ## Unit tests
 
