@@ -108,6 +108,23 @@ jobs:
           done
           exit $status
 
+      # C4Reloc::Init() looks for a `planet` folder next to the executable and
+      # only falls back to OC_SYSTEM_DATA_DIR -- the install prefix -- if there
+      # is none. That fallback is why an uninstalled out-of-source build fails
+      # with "Error opening system group file (System.ocg)!" on Linux; upstream
+      # never hit it because Travis built in-source, putting the binaries in the
+      # repository root next to planet/. Point the engine at the packed groups
+      # instead of the unpacked sources, so the scenario run exercises what
+      # c4group produced. The lookup is #ifndef __APPLE__, so this is a no-op on
+      # macOS, where SystemDataPath is the executable's own directory.
+      - name: Stage packed game data next to the binary
+        run: |
+          mkdir -p build/planet
+          for f in build/*.oc*; do
+            ln -sf "../$(basename "$f")" "build/planet/$(basename "$f")"
+          done
+          ls -l build/planet
+
       - name: Run a scenario
         run: |
           ./build/openclonk-server --language=US \
