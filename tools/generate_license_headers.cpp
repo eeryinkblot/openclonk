@@ -30,9 +30,6 @@ static std::string target = "";
 		msg += "in '" + target + "': ";
 	msg += err;
 	std::cerr << msg << std::endl;
-	// Somehow Appveyor/msvc won't show stderr messages
-	if (std::getenv("APPVEYOR") != nullptr)
-		system(("appveyor AddCompilationMessage -Category Error \"" + msg + "\"").c_str());
 	exit(-1);
 }
 
