@@ -43,7 +43,35 @@ The executable is deliberately **not** verified with `codesign -v`: game data is
 packed into `Contents/Resources` by a later POST_BUILD step, so its resource
 seal is always stale. Only the presence of a signature is checked.
 
-Typical runtimes: Linux ≈ 5.5 min, macOS headless ≈ 4.5 min, macOS app ≈ 4 min.
+### `windows-c4group` — `windows-latest`
+
+Windows had no coverage after AppVeyor, and the old setup cannot be revived: it
+pulled prebuilt dependencies from a personal server that no longer answers.
+Only the epoxy and curl bundles on openclonk.org are still up.
+
+So this starts from the smallest useful target. `C4GROUP_TOOL_ONLY` needs
+nothing but zlib — PNG, JPEG, Freetype and curl are all behind that option — and
+vcpkg on the runner provides it in seconds. It still compiles all of `libmisc`:
+`C4Group`, `CStdFile`, `StdCompiler`, `C4NetIO` and the vendored zlib fork,
+which is where this fork's platform-independent changes are.
+
+| Step | Guards against |
+| --- | --- |
+| Configure and build `c4group` | MSVC drifting out of compatibility with the codebase |
+| Pack, unpack, compare contents | The group format breaking on Windows |
+| Assert a usage error exits non-zero | The exit code regression, on Windows too |
+
+Only the `c4group` target is built: `C4GROUP_TOOL_ONLY` still *defines*
+`libc4script` and `libopenclonk`, so the default `all` target tries to compile
+sources needing PNG and JPEG that this configuration does not look for.
+
+**MSVC 2022 compiles libmisc and c4group without a single error** — the first
+successful Windows build of this codebase in about five years. Two upstream
+defects had to be fixed to get there, both in configurations evidently never
+used on that platform: see sections 14 and 15 of [divergence.md](divergence.md).
+
+Typical runtimes: Linux ≈ 5.5 min, macOS headless ≈ 4.5 min, macOS app ≈ 4 min,
+Windows ≈ 4 min.
 
 ## Why the checks are shaped like this
 
@@ -98,15 +126,16 @@ machine ever ticks. See [ADR-009](decisions.md#adr-009--hold-stdin-open-in-ci-in
 
 ## What it does not cover
 
-- **Windows.** No job at all, and the old AppVeyor configuration is gone rather
-  than fixed. Anyone wanting Windows coverage starts from scratch.
+- **The rest of Windows.** Only `c4group` is built there. `HEADLESS_ONLY` and
+  the full build need the other libraries from vcpkg, and whether MSVC can
+  compile the engine itself is still unknown — only `libmisc` has been proven.
 - **The Qt editor.** Qt5 is no longer available from Homebrew, so
   `WITH_QT_EDITOR` is off everywhere and `src/editor/` is not compiled.
 - **Actually running the GUI.** `macos-app` builds and inspects the bundle but
   never launches it; there is no display on the runner.
-- **The fixes themselves.** The unit tests cover `libmisc` and `libc4script`.
-  None of the ten changes in this fork lives there, so none is exercised by
-  them. What guards them is the scenario run and the bundle checks.
+- **Most of the fixes themselves.** The unit tests cover `libmisc` and
+  `libc4script`. What guards the rest is the scenario run, the bundle checks and
+  the Windows round-trip.
 
 ## This workflow will not pass on upstream master
 

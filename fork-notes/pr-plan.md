@@ -159,6 +159,33 @@ the project used to build, or may not want them gone without a replacement
 landing first. Pair it with the workflow, or drop it — nothing else depends on
 it.
 
+### PR 9 — build system: options that were never exercised
+
+| | |
+| --- | --- |
+| Commits | `b709b8c1b`, `0f2d43509` |
+| Files | `CMakeLists.txt` |
+| Effect | `C4GROUP_TOOL_ONLY` configures and builds on Windows |
+
+Both found by adding a Windows CI job. The MSVC block sets properties on
+targets that `HEADLESS_ONLY` and `C4GROUP_TOOL_ONLY` remove; zlib's include
+path was only added in the branch that excludes `C4GROUP_TOOL_ONLY`, so the one
+configuration needing nothing else could not find `zlib.h`.
+
+Pairs naturally with PR 4 — same class of defect, same file, opposite platform.
+
+### PR 10 — CI: a GitHub Actions workflow
+
+| | |
+| --- | --- |
+| Commits | the `.github/workflows/build.yml` series, starting `91b545a07` |
+| Files | `.github/workflows/build.yml` |
+| Effect | Replaces the dead Travis and AppVeyor configuration |
+
+**Submit last.** The workflow cannot pass on upstream master without the fixes
+above, so it has to follow them or be squashed together with them. It also
+pairs with PR 8, which deletes what it replaces.
+
 ### PR 5 — macOS: audio and app bundling
 
 | | |

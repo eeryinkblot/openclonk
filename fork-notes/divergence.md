@@ -4,17 +4,23 @@ Every change this fork carries on top of `openclonk/openclonk` master
 (`36de79954`, 2026-04-28), with the reasoning behind it and what it actually
 changes at runtime.
 
-All of them are macOS or Apple-Silicon specific. None touches game logic, the
+Most are macOS or Apple-Silicon specific, but not all: the c4group exit code
+(11), the ctest registration (12), the MSVC guards (14) and zlib's include path
+(15) are platform-independent or Windows-side. None touches game logic, the
 script engine, or anything that could affect network synchronisation — the
 91,026 lines of C4Script under `planet/` linked without a single warning on the
 very first build.
 
-Four of the ten announced themselves properly, as compile or configure errors
-(1, 2, 3, 10). The rest did not. `c4group` reported success while writing
-zero-byte archives, the server sat in an event loop without printing anything,
-the mouse discarded every event, and the audio path reported a working device
-while the engine had sound switched off in its config. That is the class of
-defect a dead CI cannot catch and only running the thing reveals.
+Several announced themselves properly, as compile or configure errors. Many did
+not. `c4group` reported success while writing zero-byte archives, the server sat
+in an event loop without printing anything, the mouse discarded every event,
+`ctest` passed while skipping its largest suite, and the audio path reported a
+working device while the engine had sound switched off in its config. That is
+the class of defect a dead CI cannot catch and only running the thing reveals.
+
+A pattern runs through the build-system entries: every one of them is an option
+that was never exercised on the platform where it matters. `HEADLESS_ONLY` had
+never been used on macOS (1, 10), `C4GROUP_TOOL_ONLY` never on Windows (14, 15).
 
 For how these group into pull requests, see [pr-plan.md](pr-plan.md).
 
@@ -604,6 +610,67 @@ generator and a mistake there would break every binary.
 
 Deleting a CI config cannot affect a build. The only code change is in a
 build-time tool, and `bail()` still prints to stderr and exits non-zero.
+
+---
+
+## 14. `b709b8c1b` — the MSVC block touched targets that may not exist
+
+**Files:** `CMakeLists.txt`
+
+### Motivation
+
+Same defect as the Apple block (see 1 above), mirrored on Windows. The MSVC
+section sets properties on `openclonk`, `openclonk-server` and `c4script`
+unconditionally, but `HEADLESS_ONLY` drops the first and `C4GROUP_TOOL_ONLY`
+drops all but `c4group`. Configuring with either fails:
+
+    CMake Error at CMakeLists.txt:1402 (set_target_properties):
+      set_target_properties Can not find target to add properties to
+
+plus the same for the `/MANIFEST:NO` property and the precompiled header
+block's `get_property()` on openclonk's sources.
+
+### Technical effect
+
+`oc_set_target_names()` returns early for a target that does not exist, which
+covers all four of its call sites; the other two references are guarded
+individually.
+
+`C4GROUP_TOOL_ONLY` had evidently never been used on Windows, exactly as
+`HEADLESS_ONLY` had never been used on macOS. Found by adding a Windows CI job.
+
+### Risk
+
+None for a full build, where all four targets exist and the guards never fire.
+
+---
+
+## 15. `0f2d43509` — zlib's include path was missing in one configuration
+
+**Files:** `CMakeLists.txt`
+
+### Motivation
+
+`find_package(ZLIB REQUIRED)` runs unconditionally, but its include directory
+was only added inside `if (NOT C4GROUP_TOOL_ONLY)`, bundled with JPEG's and
+PNG's. zlib was therefore found and then never made reachable for the one
+configuration that needs nothing else:
+
+    src\lib\StdBuf.h(21,10): error C1083: Cannot open include file:
+    'zlib.h': No such file or directory
+
+`libmisc` includes `<zlib.h>` through `StdBuf.h`, so this affects every
+configuration. It went unnoticed because `zlib.h` sits in a default include
+path on Linux and macOS — only where a package manager puts it, as with vcpkg
+on Windows, does the missing `-I` actually bite.
+
+### Technical effect
+
+The include directory moves next to the `find_package` call, outside the guard.
+
+### Risk
+
+None: it only adds an include path that every other configuration already had.
 
 ---
 
