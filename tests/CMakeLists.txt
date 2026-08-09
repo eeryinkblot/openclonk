@@ -120,6 +120,11 @@ if (GTEST_FOUND AND GMOCK_FOUND)
     if(WIN32)
         target_link_libraries(tests winmm)
     endif()
+    # Registered by hand because this target cannot go through create_test():
+    # AUX_SOURCE_DIRECTORY already picks up main.cpp and TestLog.cpp, which the
+    # function would add a second time. Without this, ctest silently covers only
+    # the two create_test() targets and skips the largest suite.
+    add_test(NAME tests COMMAND tests)
 
     create_test(aul_test
         SOURCES
