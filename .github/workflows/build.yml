@@ -307,3 +307,7 @@ jobs:
           & $env:C4GROUP src-dir -t 2>$null
           if ($LASTEXITCODE -eq 0) { throw "c4group reported success for a failed pack" }
           Write-Host "failure is reported in the exit code ($LASTEXITCODE)"
+          # The step's own status comes from $LASTEXITCODE, which is still the
+          # non-zero code we just asserted on. Reset it, or the step fails for
+          # having successfully verified a failure.
+          exit 0
