@@ -17,8 +17,6 @@
 // based on SDL implementation
 
 #include "C4ForbidLibraryCompilation.h"
-#define GL_SILENCE_DEPRECATION
-#include <epoxy/gl.h>
 
 #include "C4Include.h"
 #include "platform/C4Window.h"
@@ -28,6 +26,14 @@
 #import <Cocoa/Cocoa.h>
 
 #ifndef USE_CONSOLE
+// Only the windowing half of this file needs OpenGL. Everything below the
+// matching #endif -- IsGermanSystem, OpenURL, EraseItemSafe, GetGameDataPath --
+// is plain Cocoa and is what a console build actually links this file for, so
+// including epoxy unconditionally made HEADLESS_ONLY require libepoxy for no
+// reason.
+#define GL_SILENCE_DEPRECATION
+#include <epoxy/gl.h>
+
 #import "platform/C4WindowController.h"
 #import "graphics/C4DrawGLMac.h"
 

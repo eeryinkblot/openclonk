@@ -41,9 +41,8 @@ jobs:
 
       - name: Install dependencies (macOS)
         if: runner.os == 'macOS'
-        # libepoxy is not optional even for HEADLESS_ONLY: OC_SYSTEM_SOURCES
-        # pulls in src/platform/C4AppMac.mm on Apple, which includes epoxy/gl.h.
-        run: brew install libpng jpeg-turbo freetype miniupnpc libepoxy
+        # Deliberately no libepoxy: HEADLESS_ONLY must not need a GL loader.
+        run: brew install libpng jpeg-turbo freetype miniupnpc
 
       # CMake compiles gtest/gmock into the project, so it needs their sources.
       # A packaged googletest only ships headers and libraries and will not do.
@@ -80,6 +79,20 @@ jobs:
         run: |
           jobs=$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 2)
           cmake --build build --target tests aul_test StdMeshMath --parallel "$jobs"
+
+      # Asserting the property directly rather than relying on libepoxy being
+      # absent from the runner: HEADLESS_ONLY claims to skip the graphics
+      # dependencies, so nothing in the server may pull in a GL loader.
+      - name: Assert the headless build needs no GL loader
+        run: |
+          hits=$(grep -rl "epoxy" build/CMakeFiles/openclonk-server.dir \
+                   --include="*.o.d" 2>/dev/null || true)
+          if [ -n "$hits" ]; then
+            echo "::error::openclonk-server still depends on epoxy:"
+            echo "$hits"
+            exit 1
+          fi
+          echo "no GL loader in the headless server"
 
       # ctest only knows StdMeshMath and aul_test: add_test() is called from the
       # create_test() helper, and the tests target is declared without it. Run
