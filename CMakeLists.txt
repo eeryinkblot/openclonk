@@ -223,14 +223,18 @@ endif()
 
 # Needed for c4group
 find_package(ZLIB REQUIRED)
+# Needed in every configuration, C4GROUP_TOOL_ONLY included: libmisc pulls in
+# <zlib.h> through StdBuf.h. Having it only in the branch below went unnoticed
+# because zlib.h sits in a default include path on Linux and macOS, but not
+# where a package manager puts it on Windows.
+include_directories(${ZLIB_INCLUDE_DIR})
 
 if (NOT C4GROUP_TOOL_ONLY)
 	find_package(JPEG REQUIRED)
 	find_package(PNG REQUIRED)
 	include_directories(
 		${JPEG_INCLUDE_DIR}
-		${PNG_INCLUDE_DIR}
-		${ZLIB_INCLUDE_DIR})
+		${PNG_INCLUDE_DIR})
 	if(CMAKE_SYSTEM MATCHES "Windows")
 		message(STATUS "Using Win32 threading.")
 	else()

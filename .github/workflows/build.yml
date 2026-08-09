@@ -261,8 +261,12 @@ jobs:
           -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake"
           -DVCPKG_TARGET_TRIPLET=x64-windows .
 
+      # Only the c4group target: C4GROUP_TOOL_ONLY still *defines* libc4script
+      # and libopenclonk, so the default `all` target tries to compile sources
+      # needing PNG and JPEG, which that configuration deliberately does not
+      # look for.
       - name: Build
-        run: cmake --build build --config RelWithDebInfo --parallel
+        run: cmake --build build --config RelWithDebInfo --target c4group --parallel
 
       # Exercises the group format end to end, and with it the exit code fix:
       # c4group used to return 0 even after "Pack failed".
