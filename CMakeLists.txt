@@ -1629,6 +1629,26 @@ if(NOT C4GROUP_TOOL_ONLY)
 			install(FILES ${CMAKE_CURRENT_BINARY_DIR}/${group} DESTINATION share/games/openclonk)
 		endif()
 	endforeach()
+
+	# Signing has to be the last POST_BUILD step on the bundle. Signing a bundle
+	# also seals its resources -- Contents/_CodeSignature/CodeResources records a
+	# hash of every non-code file -- and the loop above drops the game data into
+	# Contents/Resources afterwards. osx_bundle_libs signs earlier, so without
+	# this the seal never matches what is in the bundle and verification fails
+	# with "a sealed resource is missing or invalid". The app still runs, because
+	# the kernel checks the executable's code signature and not the resource
+	# seal, but nothing can be notarised in that state.
+	if (APPLE AND TARGET openclonk)
+		find_program(CODESIGN_EXECUTABLE codesign)
+		if (CODESIGN_EXECUTABLE)
+			add_custom_command(TARGET openclonk POST_BUILD
+				COMMAND "${CODESIGN_EXECUTABLE}" --force --sign -
+					"$<TARGET_BUNDLE_DIR:openclonk>"
+				COMMENT "Re-sealing openclonk.app now that the game data is in place"
+				VERBATIM
+			)
+		endif()
+	endif()
 endif()
 
 if(NOT APPLE OR NOT TARGET openclonk)
