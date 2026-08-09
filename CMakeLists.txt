@@ -1396,6 +1396,11 @@ endif()
 if(MSVC)
 	# set target output filenames to a per-configuration value
 	function(oc_set_target_names target_name)
+		# Not every target exists in every configuration: HEADLESS_ONLY drops
+		# openclonk, C4GROUP_TOOL_ONLY drops all but c4group.
+		if(NOT TARGET ${target_name})
+			return()
+		endif()
 		foreach(CONFIG ${CMAKE_CONFIGURATION_TYPES})
 			string(TOUPPER "${CONFIG}" CONFIG_UPPER)
 			string(TOLOWER "${CONFIG}" CONFIG_LOWER)
@@ -1413,14 +1418,16 @@ if(MSVC)
 	# cmake does not support embedding arbitrary manifests,
 	# so we add it to the resource file ourselves and tell
 	# MSVC not to create its own.
-	set_property(TARGET openclonk APPEND PROPERTY LINK_FLAGS "/MANIFEST:NO")
+	if(TARGET openclonk)
+		set_property(TARGET openclonk APPEND PROPERTY LINK_FLAGS "/MANIFEST:NO")
+	endif()
 endif()
 
 ############################################################################
 # Precompiled header support for MSVC
 ############################################################################
 if(HAVE_PRECOMPILED_HEADERS)
-	if(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
+	if(CMAKE_CXX_COMPILER_ID MATCHES "MSVC" AND TARGET openclonk)
 		get_property(OC_SOURCES TARGET openclonk PROPERTY SOURCES)
 		foreach(FILE ${OC_SOURCES})
 			get_filename_component(FILE_EXT ${FILE} EXT)
