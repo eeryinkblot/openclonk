@@ -125,19 +125,22 @@ jobs:
           done
           ls -l build/planet
 
-      # Pass the scenario as an absolute path. A relative one is resolved against
-      # ExePath, which is not the same place on both platforms: the repository
-      # root on macOS, the binary's own directory on Linux. There the engine
-      # looked for build/planet/Tests.ocf/Movement.ocs, found nothing, and quit
-      # without printing a reason.
+      # stdin must stay open. C4StdInProc::Execute() treats a failed read as a
+      # shutdown request -- that is how the engine is meant to be stopped, and
+      # what tests/start_all_scenarios.rs relies on -- but a `run:` step gets
+      # stdin from /dev/null, so the read fails immediately and the engine
+      # quits before the state machine reaches its first PreInit. It leaves no
+      # trace beyond "Game cleared", which looks like a clean run. `tail -f`
+      # holds the pipe open without ever sending anything.
       - name: Run a scenario
         run: |
-          ./build/openclonk-server --language=US \
+          tail -f /dev/null | ./build/openclonk-server --language=US \
             "$PWD/planet/Tests.ocf/Movement.ocs" Test.ocp > engine.log 2>&1 &
           pid=$!
           sleep 90
           kill $pid 2>/dev/null || true
           wait $pid 2>/dev/null || true
+          pkill -f "tail -f /dev/null" 2>/dev/null || true
           cat engine.log
           grep -q "Game started" engine.log \
             || { echo "::error::the engine never started the scenario"; exit 1; }
