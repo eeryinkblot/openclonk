@@ -271,18 +271,27 @@ jobs:
       # Exercises the group format end to end, and with it the exit code fix:
       # c4group used to return 0 even after "Pack failed".
       - name: Round-trip a group
+      #
+      # The binary is located rather than assumed: oc_set_target_names() sets
+      # RUNTIME_OUTPUT_DIRECTORY per configuration to the build root, so the
+      # file is build/c4group.exe, not the build/<Config>/ layout MSVC uses by
+      # default, and other configurations get a suffixed name.
         run: |
           New-Item -ItemType Directory -Force src-dir | Out-Null
           Set-Content src-dir/a.txt "hello"
           Set-Content src-dir/b.txt "world"
-          $exe = "build/RelWithDebInfo/c4group.exe"
+          $exe = Get-ChildItem -Path build -Recurse -Filter "c4group*.exe" |
+                 Select-Object -First 1 -ExpandProperty FullName
+          if (-not $exe) { throw "no c4group executable was produced" }
+          Write-Host "using $exe"
+          echo "C4GROUP=$exe" >> $env:GITHUB_ENV
           & $exe src-dir -t out.ocg
           if ($LASTEXITCODE -ne 0) { throw "pack reported failure" }
           if ((Get-Item out.ocg).Length -eq 0) { throw "pack produced an empty archive" }
           New-Item -ItemType Directory -Force unpacked | Out-Null
           Copy-Item out.ocg unpacked/
           Push-Location unpacked
-          & ../$exe out.ocg -u
+          & $exe out.ocg -u
           if ($LASTEXITCODE -ne 0) { throw "unpack reported failure" }
           if ((Get-Content out.ocg/a.txt) -ne "hello") { throw "round-trip lost content" }
           Pop-Location
@@ -291,7 +300,7 @@ jobs:
       # A failing operation must now be visible in the exit code on Windows too.
       - name: A failed operation must not report success
         run: |
-          $exe = "build/RelWithDebInfo/c4group.exe"
+          $exe = $env:C4GROUP
           & $exe does-not-exist.ocg -l 2>$null
           if ($LASTEXITCODE -eq 0) { throw "c4group reported success for a missing group" }
           Write-Host "failure is reported in the exit code"
