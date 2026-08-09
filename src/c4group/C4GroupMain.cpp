@@ -39,6 +39,19 @@ char strExecuteAtEnd[_MAX_PATH_LEN] = "";
 
 int iResult = 0;
 
+// Report a failure and remember it, so that main() can return a non-zero exit
+// code. iResult existed and was returned from the start but was never assigned,
+// which is why c4group reported success no matter what went wrong.
+static void ErrorOut(const char *format, ...)
+{
+	va_list args;
+	va_start(args, format);
+	vfprintf(stderr, format, args);
+	va_end(args);
+	iResult = 1;
+}
+
+
 bool EraseItemSafe(const char *szFilename)
 {
 	return false;
@@ -161,7 +174,7 @@ bool ProcessGroup(const char *FilenamePar)
 						// Missing argument
 						if ((iArg + 1 >= argc) || (argv[iArg + 1][0] == '-'))
 						{
-							fprintf(stderr, "Missing argument for sort command\n");
+							ErrorOut("Missing argument for sort command\n");
 						}
 						// Sort, advance to next argument
 						else
@@ -188,24 +201,24 @@ bool ProcessGroup(const char *FilenamePar)
 						// Close
 						if (!hGroup.Close())
 						{
-							fprintf(stderr, "Closing failed: %s\n", hGroup.GetError());
+							ErrorOut("Closing failed: %s\n", hGroup.GetError());
 						}
 						// Pack
 						else if (!C4Group_PackDirectory(szFilename))
 						{
-							fprintf(stderr, "Pack failed\n");
+							ErrorOut("Pack failed\n");
 						}
 						// Reopen
 						else if (!hGroup.Open(szFilename))
 						{
-							fprintf(stderr, "Reopen failed: %s\n", hGroup.GetError());
+							ErrorOut("Reopen failed: %s\n", hGroup.GetError());
 						}
 						break;
 						// Pack To
 					case 't':
 						if ((iArg + 1 >= argc))
 						{
-							fprintf(stderr, "Pack failed: too few arguments\n");
+							ErrorOut("Pack failed: too few arguments\n");
 							break;
 						}
 						++iArg;
@@ -213,17 +226,17 @@ bool ProcessGroup(const char *FilenamePar)
 						// Close
 						if (!hGroup.Close())
 						{
-							fprintf(stderr, "Closing failed: %s\n", hGroup.GetError());
+							ErrorOut("Closing failed: %s\n", hGroup.GetError());
 						}
 						else if (!EraseItem(argv[iArg]))
 						{
-							fprintf(stderr, "Destination Clear failed\n");
+							ErrorOut("Destination Clear failed\n");
 							break;
 						}
 						// Pack
 						else if (!C4Group_PackDirectoryTo(szFilename, argv[iArg]))
 						{
-							fprintf(stderr, "Pack failed\n");
+							ErrorOut("Pack failed\n");
 							break;
 						}
 						free(szFilename);
@@ -231,7 +244,7 @@ bool ProcessGroup(const char *FilenamePar)
 						// Reopen
 						if (!hGroup.Open(szFilename))
 						{
-							fprintf(stderr, "Reopen failed: %s\n", hGroup.GetError());
+							ErrorOut("Reopen failed: %s\n", hGroup.GetError());
 						}
 						break;
 						// Unpack
@@ -240,17 +253,17 @@ bool ProcessGroup(const char *FilenamePar)
 						// Close
 						if (!hGroup.Close())
 						{
-							fprintf(stderr, "Closing failed: %s\n", hGroup.GetError());
+							ErrorOut("Closing failed: %s\n", hGroup.GetError());
 						}
 						// Pack
 						else if (!C4Group_UnpackDirectory(szFilename))
 						{
-							fprintf(stderr, "Unpack failed\n");
+							ErrorOut("Unpack failed\n");
 						}
 						// Reopen
 						else if (!hGroup.Open(szFilename))
 						{
-							fprintf(stderr, "Reopen failed: %s\n", hGroup.GetError());
+							ErrorOut("Reopen failed: %s\n", hGroup.GetError());
 						}
 						break;
 						// Unpack
@@ -259,17 +272,17 @@ bool ProcessGroup(const char *FilenamePar)
 						// Close
 						if (!hGroup.Close())
 						{
-							fprintf(stderr, "Closing failed: %s\n", hGroup.GetError());
+							ErrorOut("Closing failed: %s\n", hGroup.GetError());
 						}
 						// Pack
 						else if (!C4Group_ExplodeDirectory(szFilename))
 						{
-							fprintf(stderr, "Unpack failed\n");
+							ErrorOut("Unpack failed\n");
 						}
 						// Reopen
 						else if (!hGroup.Open(szFilename))
 						{
-							fprintf(stderr, "Reopen failed: %s\n", hGroup.GetError());
+							ErrorOut("Reopen failed: %s\n", hGroup.GetError());
 						}
 						break;
 						// Generate update
@@ -278,7 +291,7 @@ bool ProcessGroup(const char *FilenamePar)
 						    || (argv[iArg + 2][0] == '-')
 						    || (argv[iArg + 3][0] == '-'))
 						{
-							fprintf(stderr, "Update generation failed: too few arguments\n");
+							ErrorOut("Update generation failed: too few arguments\n");
 						}
 						else
 						{
@@ -286,17 +299,17 @@ bool ProcessGroup(const char *FilenamePar)
 							// Close
 							if (!hGroup.Close())
 							{
-								fprintf(stderr, "Closing failed: %s\n", hGroup.GetError());
+								ErrorOut("Closing failed: %s\n", hGroup.GetError());
 							}
 							// generate
 							else if (!Upd.MakeUpdate(argv[iArg + 1], argv[iArg + 2], szFilename, argv[iArg + 3]))
 							{
-								fprintf(stderr, "Update generation failed.\n");
+								ErrorOut("Update generation failed.\n");
 							}
 							// Reopen
 							else if (!hGroup.Open(szFilename))
 							{
-								fprintf(stderr, "Reopen failed: %s\n", hGroup.GetError());
+								ErrorOut("Reopen failed: %s\n", hGroup.GetError());
 							}
 							iArg += 3;
 						}
@@ -322,7 +335,7 @@ bool ProcessGroup(const char *FilenamePar)
 							if(C4Group_ApplyUpdate(hGroup, pid))
 								{ if (argv[iArg][2]=='d') fDeleteGroup = true; }
 							else
-								fprintf(stderr,"Update failed.\n");
+								ErrorOut("Update failed.\n");
 
 							if(have_pid) ++iArg;
 						}
@@ -332,18 +345,22 @@ bool ProcessGroup(const char *FilenamePar)
 						break;
 						// Undefined
 					default:
-						fprintf(stderr, "Unknown command: %s\n", argv[iArg]);
+						ErrorOut("Unknown command: %s\n", argv[iArg]);
 						break;
 					}
 				}
 				else
 				{
-					fprintf(stderr, "Invalid parameter %s\n", argv[iArg]);
+					ErrorOut("Invalid parameter %s\n", argv[iArg]);
 				}
 
 			}
 		}
 		// Error: output status
+		// Deliberately not ErrorOut(): this fires after successful runs too,
+		// because GetError() is left as "" rather than "No Error" once an
+		// operation has completed. Treating it as a failure would make every
+		// successful pack exit non-zero.
 		if (!SEqual(hGroup.GetError(), "No Error"))
 		{
 			fprintf(stderr, "Status: %s\n", hGroup.GetError());
@@ -351,7 +368,7 @@ bool ProcessGroup(const char *FilenamePar)
 		// Close group file
 		if (!hGroup.Close())
 		{
-			fprintf(stderr, "Closing: %s\n", hGroup.GetError());
+			ErrorOut("Closing: %s\n", hGroup.GetError());
 		}
 		// Delete group file if desired (i.e. after apply update)
 		if (fDeleteGroup)
@@ -363,7 +380,7 @@ bool ProcessGroup(const char *FilenamePar)
 	// Couldn't open group
 	else
 	{
-		fprintf(stderr, "Status: %s\n", hGroup.GetError());
+		ErrorOut("Status: %s\n", hGroup.GetError());
 	}
 	free(szFilename);
 	// Done
@@ -482,7 +499,7 @@ int main(int argc, char *argv[])
 			}
 				// Unknown
 			default:
-				fprintf(stderr, "Unknown option %s\n", argv[i]);
+				ErrorOut("Unknown option %s\n", argv[i]);
 				break;
 			}
 		}
@@ -580,7 +597,7 @@ int main(int argc, char *argv[])
 		{
 			// Error
 		case -1:
-			fprintf(stderr, "Error forking.\n");
+			ErrorOut("Error forking.\n");
 			break;
 			// Child process
 		case 0:
