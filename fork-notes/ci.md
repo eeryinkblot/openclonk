@@ -37,11 +37,8 @@ Builds the full `openclonk.app` with graphics and sound, then:
 | Configure, asserting `Using Audio toolkit: OpenAL` | Falling back to Apple's deprecated OpenAL framework |
 | Build | — |
 | `codesign -v` every bundled dylib | `install_name_tool` leaving invalid signatures, fatal on arm64 |
+| `codesign -v` the whole bundle | The resource seal being written before the game data is packed in |
 | Check every non-system dependency resolves | The bundling step rewriting a path to nothing |
-
-The executable is deliberately **not** verified with `codesign -v`: game data is
-packed into `Contents/Resources` by a later POST_BUILD step, so its resource
-seal is always stale. Only the presence of a signature is checked.
 
 ### `windows-c4group` — `windows-latest`
 

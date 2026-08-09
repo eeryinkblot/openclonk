@@ -199,8 +199,8 @@ Weakest cluster — submit last, and be upfront in the PR text:
 - `605abb61b` re-anchors rpaths to absolute paths, so the bundle stops being
   relocatable. It was not startable at all before, so this is still a net gain,
   but a maintainer will ask.
-- The bundle's resource seal is stale afterwards (`codesign -v` complains)
-  because game data is packed by a later POST_BUILD step. Not fixed here.
+- The stale resource seal that used to come with this is fixed separately by
+  `4e9f0c3ec`; include it, or `codesign -v` on the result still fails.
 - `6333d5498` was found while chasing silent audio but was **not** its cause.
   Do not claim it fixes "no sound" — see `divergence.md`.
 

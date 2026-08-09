@@ -674,6 +674,46 @@ None: it only adds an include path that every other configuration already had.
 
 ---
 
+## 16. `4e9f0c3ec` — the app bundle's resource seal never matched
+
+**Files:** `CMakeLists.txt`
+
+### Motivation
+
+Signing a bundle does two separate things: it signs the executable's code
+pages, and it *seals the resources* — `Contents/_CodeSignature/CodeResources`
+records a hash of every non-code file in the bundle.
+
+`tools/osx_bundle_libs` signs as its own POST_BUILD step, and the game data is
+packed into `Contents/Resources` by POST_BUILD steps registered later in
+`CMakeLists.txt`. POST_BUILD commands run in registration order, so ~115 MB of
+`.ocg`/`.ocd`/`.ocf` arrived after the seal was written:
+
+    openclonk.app: a sealed resource is missing or invalid
+
+The app runs anyway, which is why this survived: the kernel validates the
+executable's code signature, not the resource seal. The seal matters to
+Gatekeeper, to `codesign -v` and to notarisation.
+
+### Technical effect
+
+Adds a final POST_BUILD step after the packing loop that re-seals the bundle.
+The fix is entirely one of ordering.
+
+    codesign -v build-gui/openclonk.app   → exit 0
+    CodeResources                         → 48 files, all 13 groups included
+
+The app still starts with graphics, audio and music. CI now runs `codesign -v`
+on the bundle instead of merely checking that a signature exists, so a
+regression in the ordering fails the build.
+
+### Risk
+
+Signing is guarded by `find_program(codesign)`, so a cross-compiling host
+without it is unaffected.
+
+---
+
 ## Not addressed
 
 Known, deliberately left alone:
@@ -681,7 +721,7 @@ Known, deliberately left alone:
 | Issue | Where |
 | --- | --- |
 | Redundant `mac mac-arm64` in the version line | `cmake/Version.cmake`, upstream behaviour on all platforms |
-| Bundle resource seal stale after data packing | POST_BUILD ordering in `CMakeLists.txt` |
+| `C4GROUP_TOOL_ONLY` still defines libc4script and libopenclonk, so the default `all` target tries to compile sources needing PNG and JPEG | `CMakeLists.txt`; the Windows CI job builds the `c4group` target explicitly to work around it |
 
 ## Unit tests
 
@@ -706,7 +746,7 @@ Version choice is constrained from both sides: the tests use the arity-based
 and `CMAKE_CXX_STANDARD 14` with `STANDARD_REQUIRED ON` rules out 1.15+.
 1.10.0 sits in the remaining window.
 
-This means the engine-side changes in this fork are now covered by whatever
-those tests cover — which is `libmisc` and `libc4script`, not the macOS
-platform layer where all the fixes live. None of the nine changes is exercised
-by them.
+What this does and does not buy: the suites cover `libmisc` and `libc4script`,
+not the macOS platform layer where most of the fixes live. The exception is the
+c4group exit code (11), which the Windows CI job checks directly. The rest are
+guarded by the scenario run and the bundle checks, not by these tests.
