@@ -138,9 +138,15 @@ jobs:
             "$PWD/planet/Tests.ocf/Movement.ocs" Test.ocp > engine.log 2>&1 &
           pid=$!
           sleep 90
+          # Terminating has to be forced. Without an stdin EOF to act on, the
+          # macOS build does not react to SIGTERM here, and the step then hangs
+          # until the job timeout. Also drop the tail: it inherits the step's
+          # stdout, and the runner waits for that pipe to close.
           kill $pid 2>/dev/null || true
-          wait $pid 2>/dev/null || true
+          sleep 5
+          kill -9 $pid 2>/dev/null || true
           pkill -f "tail -f /dev/null" 2>/dev/null || true
+          wait $pid 2>/dev/null || true
           cat engine.log
           grep -q "Game started" engine.log \
             || { echo "::error::the engine never started the scenario"; exit 1; }

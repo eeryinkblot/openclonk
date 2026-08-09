@@ -7,10 +7,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 `eeryinkblot/openclonk`, carrying macOS / Apple Silicon fixes on top of upstream
 `openclonk/openclonk`. Remotes: `origin` is the fork, `upstream` is the project.
 
-- `fork-notes/divergence.md` — what every deviation does and why. **Read it before
-  touching the macOS platform layer**; several changes exist because the upstream code
-  fails silently rather than loudly.
-- `fork-notes/pr-plan.md` — how the commits group into eventual pull requests.
+Reference material under `fork-notes/`, worth consulting when it is relevant rather
+than up front:
+
+| File | What it answers |
+| --- | --- |
+| `divergence.md` | What every deviation from upstream does, and why upstream's version was wrong |
+| `decisions.md` | Why each change has the shape it does, and which alternatives were rejected |
+| `ci.md` | What the GitHub Actions workflow checks, and the environment constraints behind it |
+| `pr-plan.md` | How the commits group into eventual pull requests |
+
+`decisions.md` is the one to reach for before reworking something that already looks
+odd — several of the alternatives rejected there are the obvious first idea.
 
 `CLAUDE.md` and `fork-notes/` are fork-local and must never end up in a PR branch.
 Build PR branches by cherry-picking onto `upstream/master`, never by branching off
