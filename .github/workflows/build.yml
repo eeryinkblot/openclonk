@@ -1,0 +1,171 @@
+name: Build and test
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  GTEST_VERSION: "1.10.0"
+
+jobs:
+  headless:
+    name: Headless — ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Record the platform
+        run: |
+          uname -sm
+          cmake --version | head -1
+
+      - name: Install dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libpng-dev libjpeg-dev libfreetype-dev zlib1g-dev \
+            libcurl4-openssl-dev libminiupnpc-dev
+
+      - name: Install dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: brew install libpng jpeg-turbo freetype miniupnpc
+
+      # CMake compiles gtest/gmock into the project, so it needs their sources.
+      # A packaged googletest only ships headers and libraries and will not do.
+      # The version is pinned from both ends: the tests use the arity-based
+      # MOCK_METHOD1/2 macros dropped in later releases, and the project is
+      # CMAKE_CXX_STANDARD 14 with STANDARD_REQUIRED ON, which rules out 1.15+.
+      - name: Fetch googletest sources
+        run: |
+          curl -sSL -o gtest.tar.gz \
+            "https://github.com/google/googletest/archive/refs/tags/release-${GTEST_VERSION}.tar.gz"
+          tar xzf gtest.tar.gz
+
+      - name: Configure
+        run: |
+          GT="$PWD/googletest-release-${GTEST_VERSION}"
+          cmake -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo -DHEADLESS_ONLY=ON \
+            -DGTEST_ROOT="$GT/googletest" -DGMOCK_ROOT="$GT/googlemock" . \
+            | tee configure.log
+          if grep -q "Could NOT find GTest" configure.log; then
+            echo "::error::googletest sources were not picked up"
+            exit 1
+          fi
+
+      - name: Build
+        run: cmake --build build -j
+
+      - name: Build test targets
+        run: cmake --build build --target tests aul_test StdMeshMath -j
+
+      # ctest only knows StdMeshMath and aul_test: add_test() is called from the
+      # create_test() helper, and the tests target is declared without it. Run
+      # all three by hand so a green ctest cannot hide a failing main suite.
+      - name: Unit tests
+        run: |
+          ./build/tests/tests
+          ./build/tests/aul_test
+          ./build/tests/StdMeshMath
+
+      - name: Pack game data
+        run: cmake --build build --target groups
+
+      # c4group exits 0 even when packing fails, so the build reports success
+      # while writing zero-byte archives. Check the output, not the exit code.
+      - name: Reject empty group files
+        run: |
+          status=0
+          for f in build/*.oc*; do
+            if [ -s "$f" ]; then
+              printf '  %10d  %s\n' "$(wc -c < "$f")" "$f"
+            else
+              echo "::error::$f is empty — packing failed silently"
+              status=1
+            fi
+          done
+          exit $status
+
+      - name: Run a scenario
+        run: |
+          ./build/openclonk-server --language=US \
+            planet/Tests.ocf/Movement.ocs Test.ocp > engine.log 2>&1 &
+          pid=$!
+          sleep 90
+          kill $pid 2>/dev/null || true
+          wait $pid 2>/dev/null || true
+          cat engine.log
+          grep -q "Game started" engine.log \
+            || { echo "::error::the engine never started the scenario"; exit 1; }
+          grep -Eq "C4AulScriptEngine linked - .*, 0 warnings, 0 errors" engine.log \
+            || { echo "::error::script engine reported warnings or errors"; exit 1; }
+
+  macos-app:
+    name: macOS app bundle
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          brew install libepoxy openal-soft freealut sdl2 \
+            libpng jpeg-turbo freetype libogg libvorbis miniupnpc
+
+      # openal-soft is keg-only. Without the prefix hint FindAudio falls back to
+      # Apple's deprecated OpenAL.framework, which has no EFX.
+      - name: Configure
+        run: |
+          cmake -B build-gui -DCMAKE_BUILD_TYPE=RelWithDebInfo -DHEADLESS_ONLY=OFF \
+            -DCMAKE_PREFIX_PATH="$(brew --prefix openal-soft)" . | tee configure.log
+          grep -q "Using Audio toolkit: OpenAL" configure.log \
+            || { echo "::error::no real OpenAL was selected"; exit 1; }
+
+      - name: Build
+        run: cmake --build build-gui -j
+
+      # install_name_tool invalidates signatures, and on arm64 an invalid
+      # signature is fatal: the kernel refuses to map the image. The bundled
+      # libraries must verify.
+      - name: Verify bundled libraries are signed
+        run: |
+          status=0
+          for f in build-gui/openclonk.app/Contents/Frameworks/*.dylib; do
+            if codesign -v "$f" 2>/dev/null; then
+              echo "  ok  $(basename "$f")"
+            else
+              echo "::error::$(basename "$f") has no valid signature"
+              status=1
+            fi
+          done
+          exit $status
+
+      # The executable itself is expected to fail `codesign -v`: game data is
+      # packed into Contents/Resources by a later POST_BUILD step, so the
+      # resource seal is stale. Check only that it carries a signature at all.
+      - name: Verify the executable is signed and fully linked
+        run: |
+          exe=build-gui/openclonk.app/Contents/MacOS/openclonk
+          codesign -dv "$exe" 2>&1 | head -3
+          file "$exe"
+          missing=0
+          # Feed the loop by redirection, not through a pipe: a piped while
+          # runs in a subshell and its assignment to $missing would be lost.
+          while read -r lib; do
+            path="${lib/@executable_path/$(dirname "$exe")}"
+            if [ -f "$path" ]; then
+              echo "  ok  $lib"
+            else
+              echo "::error::unresolved dependency: $lib"
+              missing=1
+            fi
+          done < <(otool -L "$exe" | tail -n +2 | awk '{print $1}' \
+                     | grep -v '^/System\|^/usr/lib')
+          exit $missing
