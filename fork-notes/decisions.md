@@ -25,6 +25,7 @@ attractive again.
 | [ADR-013](#adr-013--add-mac-arm64-without-touching-mac-x86) | Add `mac-arm64` without touching `mac-x86` | accepted |
 | [ADR-014](#adr-014--move-the-epoxy-include-behind-use_console-rather-than-dropping-the-file) | Move the epoxy include behind `USE_CONSOLE` | accepted |
 | [ADR-015](#adr-015--route-c4group-failures-through-a-helper-and-leave-one-site-alone) | Route c4group failures through a helper | accepted |
+| [ADR-016](#adr-016--register-tests-by-hand-and-keep-checking-the-ctest-manifest) | Register `tests` by hand, keep checking the manifest | accepted |
 
 ---
 
@@ -454,3 +455,38 @@ affect an existing workflow — called out in the commit message and in
 The excluded site now carries a comment explaining why it is not marked. Without
 it, the next reader would see 26 converted calls and one `fprintf` and assume
 an oversight.
+
+---
+
+## ADR-016 — Register `tests` by hand, and keep checking the ctest manifest
+
+**Context.** `add_test()` is only called from the `create_test()` helper, and
+the `tests` target uses a bare `add_executable`, so ctest covered two of the
+three binaries. The CI worked around it by running all three explicitly.
+
+**Decision.** Add a single `add_test(NAME tests COMMAND tests)` next to the
+target, and switch CI to `ctest` — but assert first that all three binaries
+appear in `ctest -N`.
+
+**Alternatives.**
+
+- *Make `tests` go through `create_test()`.* The obvious tidy-up, and it does
+  not work as-is: the helper adds `main.cpp` and `TestLog.cpp` explicitly while
+  `AUX_SOURCE_DIRECTORY` already globs them, so they would be compiled twice.
+  The target also needs `C4SCRIPT_SOURCES` and `rt`/`winmm`, which the helper
+  has no parameters for. Extending it for one caller is more code than the one
+  line it would save.
+- *Keep running the three binaries explicitly and leave CMake alone.* Works,
+  but it means anyone using `ctest` — the obvious thing to reach for — keeps
+  getting a false all-clear.
+- *Trust ctest once registration is fixed.* Tempting, but the same defect can
+  recur silently the moment a fourth binary is added. The manifest check costs
+  four lines and turns a silent regression into a failed job.
+
+**Consequences.** The assertion names the three binaries, so adding a fourth
+requires editing the workflow. That is deliberate: it forces a decision about
+whether the new binary belongs in the suite rather than letting it be forgotten.
+
+Also worth knowing: `enable_testing()` is called from `tests/CMakeLists.txt`,
+not the top level, so the manifest is in `build/tests` and
+`ctest --test-dir build` finds nothing at all.

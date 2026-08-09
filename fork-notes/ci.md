@@ -21,7 +21,7 @@ Builds with `HEADLESS_ONLY=ON`, then:
 | Build | — |
 | Build `tests aul_test StdMeshMath` | — |
 | Assert no GL loader in the server | `HEADLESS_ONLY` quietly acquiring a graphics dependency |
-| Run all three binaries individually | `ctest` covering only two of them (see [ADR-010](decisions.md#adr-010--pin-googletest-to-1100-and-fetch-the-sources-in-ci)) |
+| Run `ctest`, asserting all three binaries are registered | A target added without `add_test()` dropping out of the suite unnoticed |
 | Pack game data | — |
 | Reject empty group files | `c4group` exiting 0 after a failed pack |
 | Stage packed groups next to the binary | — |
@@ -54,7 +54,9 @@ happened:
   while writing zero-byte archives.
 - `openclonk-server` exits **0** when it quits before initialising, with
   "Game cleared" in the log making it look like a completed run.
-- `ctest` passes while never running the largest of the three test binaries.
+- `ctest` used to pass while never running the largest of the three test
+  binaries; fixed now, but the workflow still checks the manifest rather than
+  assuming it is complete.
 
 Checking exit codes alone would therefore have produced a green pipeline for a
 completely broken build. Each check inspects output instead.

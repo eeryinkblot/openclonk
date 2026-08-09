@@ -532,6 +532,40 @@ most likely to affect an existing workflow.
 
 ---
 
+## 12. `9af77e8a3` — ctest silently skipped the largest test suite
+
+**Files:** `tests/CMakeLists.txt`
+
+### Motivation
+
+`add_test()` is only called from the `create_test()` helper, and the `tests`
+target is declared with a bare `add_executable`. ctest therefore knew only
+`StdMeshMath` and `aul_test`, and a green run said nothing about 15 of the 72
+tests — C4NetIO, C4Value, StdFile, the string table, unicode handling and
+DirectExec.
+
+### Technical effect
+
+Registers the target by hand. It cannot go through `create_test()`:
+`AUX_SOURCE_DIRECTORY` already picks up `main.cpp` and `TestLog.cpp`, which the
+helper adds explicitly, and the target additionally needs `C4SCRIPT_SOURCES`
+and `rt`/`winmm`.
+
+    Test #1: StdMeshMath
+    Test #2: tests
+    Test #3: aul_test
+    100% tests passed out of 3
+
+Note the manifest lives in `build/tests`, not `build`, because
+`enable_testing()` is called from `tests/CMakeLists.txt` rather than the top
+level. `ctest --test-dir build` still finds nothing.
+
+### Risk
+
+None. Adding a test to the manifest cannot affect a build.
+
+---
+
 ## Not addressed
 
 Known, deliberately left alone:
@@ -540,7 +574,6 @@ Known, deliberately left alone:
 | --- | --- |
 | Redundant `mac mac-arm64` in the version line | `cmake/Version.cmake`, upstream behaviour on all platforms |
 | Bundle resource seal stale after data packing | POST_BUILD ordering in `CMakeLists.txt` |
-| `ctest` covers only 2 of the 3 test binaries | `add_test()` is only called from `create_test()`, which `tests` does not use |
 | CI is dead (Travis, AppVeyor with VS 2017) | `.travis.yml`, `appveyor.yml` |
 
 ## Unit tests

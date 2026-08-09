@@ -134,6 +134,17 @@ PR 1: that fixes the packing failure, this makes any future one visible.
 Flag two things in the PR text — the deliberately unmarked "Status:" line, and
 that "Unknown option" and "Error forking" now fail where they used to warn.
 
+### PR 7 — tests: register the tests target with ctest
+
+| | |
+| --- | --- |
+| Commits | `9af77e8a3` |
+| Files | `tests/CMakeLists.txt` |
+| Effect | `ctest` stops skipping 15 of the 72 tests |
+
+One line plus a comment, platform-independent, and trivially verifiable by
+running `ctest -N` before and after. The easiest of all the clusters to argue.
+
 ### PR 5 — macOS: audio and app bundling
 
 | | |

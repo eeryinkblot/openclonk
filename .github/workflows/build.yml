@@ -94,14 +94,20 @@ jobs:
           fi
           echo "no GL loader in the headless server"
 
-      # ctest only knows StdMeshMath and aul_test: add_test() is called from the
-      # create_test() helper, and the tests target is declared without it. Run
-      # all three by hand so a green ctest cannot hide a failing main suite.
+      # The manifest lives in build/tests, not build: enable_testing() is called
+      # from tests/CMakeLists.txt rather than the top level. Assert the three
+      # binaries are actually registered before trusting the result -- a target
+      # added without add_test() drops out of the suite silently, which is
+      # exactly what used to happen to `tests` itself.
       - name: Unit tests
         run: |
-          ./build/tests/tests
-          ./build/tests/aul_test
-          ./build/tests/StdMeshMath
+          listing=$(ctest --test-dir build/tests -N)
+          echo "$listing"
+          for t in tests aul_test StdMeshMath; do
+            echo "$listing" | grep -qE "Test +#[0-9]+: $t\$" \
+              || { echo "::error::$t is not registered with ctest"; exit 1; }
+          done
+          ctest --test-dir build/tests --output-on-failure
 
       - name: Pack game data
         run: cmake --build build --target groups
