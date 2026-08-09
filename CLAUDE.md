@@ -25,8 +25,13 @@ odd — several of the alternatives rejected there are the obvious first idea.
 Build PR branches by cherry-picking onto `upstream/master`, never by branching off
 this `master`.
 
-Upstream has been near-dormant since 2021 and its CI (Travis, AppVeyor) is dead, so
-nothing here is validated by anyone else. Verify changes by running the thing.
+**This fork is the primary line of development.** Upstream is dormant — roughly one
+merged PR a year, outside contributions sitting for years — so submission is
+opportunistic and never a reason to hold anything back here. `fork-notes/pr-plan.md`
+keeps the commits separable so a PR stays cheap if one is ever worth opening.
+
+Nothing here is validated by anyone else, and upstream's own CI is gone. Verify
+changes by running the thing.
 
 ## What this is
 

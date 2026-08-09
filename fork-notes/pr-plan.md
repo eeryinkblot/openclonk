@@ -1,8 +1,15 @@
 # Upstream PR plan
 
-How the commits on this fork's `master` group into pull requests against
-`openclonk/openclonk`. Update this file whenever you add a commit that is meant
-to go upstream eventually.
+**This fork is the primary line of development, not a staging area.** Upstream
+submission is opportunistic: worth doing when a cluster is ready and someone
+feels like it, never a blocker for anything here.
+
+What this file is for is keeping that option *cheap*. Commits stay separable,
+each cluster stays independently defensible, and nothing gets bundled together
+for convenience. Then a PR is twenty minutes of cherry-picking whenever it
+suits, rather than an archaeology project.
+
+Update it whenever you add a commit that could plausibly go upstream.
 
 **This file is fork-local and must never appear in a PR branch.** So is
 `CLAUDE.md` and everything else under `fork-notes/`.
@@ -227,9 +234,19 @@ Before committing something you may want upstream:
 4. If it is fork-local, say so in the commit message and list it under
    *Never upstream*.
 
-## Status
+## What to expect from upstream
 
-Nothing has been submitted yet. The project has been near-dormant since 2021
-(single-digit commits per year, CI dead since Travis shut down), so expect PRs
-to sit. That is an argument for keeping this fork's `master` usable on its own
-rather than waiting on upstream.
+Dormant, but not dead. As of August 2026:
+
+| | |
+| --- | --- |
+| Open PRs | 7; the oldest from 2019, untouched since the day it was opened |
+| Merged | #171 (Apr 2026), #166 (Jan 2025), #152 (Jan 2021) |
+| Last push | 2026-04-28 |
+
+So roughly one merged PR a year while outside contributions sit for years.
+Someone still has commit rights and acts occasionally; the review pipeline
+effectively does not function.
+
+Plan accordingly: submit when it costs nothing, expect no answer, and never
+hold anything here waiting for one.
