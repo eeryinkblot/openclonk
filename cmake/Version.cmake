@@ -37,15 +37,11 @@ if(C4VERSIONEXTRA)
 	set(C4VERSION "${C4VERSION}-${C4VERSIONEXTRA}")
 endif()
 
-if(WIN32)
-	set(C4VERSION       "${C4VERSION} win")
-elseif(APPLE)
-	set(C4VERSION       "${C4VERSION} mac")
-elseif(UNIX)
-	set(C4VERSION       "${C4VERSION} unix")
-else()
-	set(C4VERSION       "${C4VERSION} strange")
-endif()
+# No platform word here. C4_OS already carries the platform *and* the
+# architecture ("mac-arm64", "win-x86_64"), and the two were printed next to
+# each other, so the startup log read "Version: 9.0-alpha mac mac-arm64".
+# C4VERSION is never compared anywhere -- network compatibility goes through
+# C4XVER1/C4XVER2 -- so this only affects what is displayed.
 
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/src/C4Version.h.in ${CMAKE_CURRENT_BINARY_DIR}/C4Version.h ESCAPE_QUOTES)
 if(WIN32)
