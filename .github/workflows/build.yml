@@ -237,3 +237,57 @@ jobs:
           done < <(otool -L "$exe" | tail -n +2 | awk '{print $1}' \
                      | grep -v '^/System\|^/usr/lib')
           exit $missing
+
+  # Windows has had no CI since AppVeyor. The old setup pulled prebuilt
+  # dependencies from a personal server that is now unreachable, so this starts
+  # from the smallest useful target instead: C4GROUP_TOOL_ONLY needs nothing but
+  # zlib, and it still compiles all of libmisc -- C4Group, CStdFile,
+  # StdCompiler, C4NetIO and the vendored zlib fork -- which is where this
+  # fork's cross-platform changes live.
+  windows-c4group:
+    name: Windows — c4group
+    runs-on: windows-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install zlib
+        run: vcpkg install zlib:x64-windows
+
+      - name: Configure
+        run: >
+          cmake -B build -A x64 -DC4GROUP_TOOL_ONLY=ON
+          -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake"
+          -DVCPKG_TARGET_TRIPLET=x64-windows .
+
+      - name: Build
+        run: cmake --build build --config RelWithDebInfo --parallel
+
+      # Exercises the group format end to end, and with it the exit code fix:
+      # c4group used to return 0 even after "Pack failed".
+      - name: Round-trip a group
+        run: |
+          New-Item -ItemType Directory -Force src-dir | Out-Null
+          Set-Content src-dir/a.txt "hello"
+          Set-Content src-dir/b.txt "world"
+          $exe = "build/RelWithDebInfo/c4group.exe"
+          & $exe src-dir -t out.ocg
+          if ($LASTEXITCODE -ne 0) { throw "pack reported failure" }
+          if ((Get-Item out.ocg).Length -eq 0) { throw "pack produced an empty archive" }
+          New-Item -ItemType Directory -Force unpacked | Out-Null
+          Copy-Item out.ocg unpacked/
+          Push-Location unpacked
+          & ../$exe out.ocg -u
+          if ($LASTEXITCODE -ne 0) { throw "unpack reported failure" }
+          if ((Get-Content out.ocg/a.txt) -ne "hello") { throw "round-trip lost content" }
+          Pop-Location
+          Write-Host "pack/unpack round-trip ok"
+
+      # A failing operation must now be visible in the exit code on Windows too.
+      - name: A failed operation must not report success
+        run: |
+          $exe = "build/RelWithDebInfo/c4group.exe"
+          & $exe does-not-exist.ocg -l 2>$null
+          if ($LASTEXITCODE -eq 0) { throw "c4group reported success for a missing group" }
+          Write-Host "failure is reported in the exit code"
