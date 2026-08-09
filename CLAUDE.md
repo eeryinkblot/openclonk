@@ -15,6 +15,7 @@ than up front:
 | `divergence.md` | What every deviation from upstream does, and why upstream's version was wrong |
 | `decisions.md` | Why each change has the shape it does, and which alternatives were rejected |
 | `ci.md` | What the GitHub Actions workflow checks, and the environment constraints behind it |
+| `platforms.md` | What is known to work on which machine, and what is only assumed |
 | `pr-plan.md` | How the commits group into eventual pull requests |
 
 `decisions.md` is the one to reach for before reworking something that already looks
