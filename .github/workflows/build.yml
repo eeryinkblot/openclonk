@@ -125,10 +125,15 @@ jobs:
           done
           ls -l build/planet
 
+      # Pass the scenario as an absolute path. A relative one is resolved against
+      # ExePath, which is not the same place on both platforms: the repository
+      # root on macOS, the binary's own directory on Linux. There the engine
+      # looked for build/planet/Tests.ocf/Movement.ocs, found nothing, and quit
+      # without printing a reason.
       - name: Run a scenario
         run: |
           ./build/openclonk-server --language=US \
-            planet/Tests.ocf/Movement.ocs Test.ocp > engine.log 2>&1 &
+            "$PWD/planet/Tests.ocf/Movement.ocs" Test.ocp > engine.log 2>&1 &
           pid=$!
           sleep 90
           kill $pid 2>/dev/null || true
