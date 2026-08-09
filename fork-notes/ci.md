@@ -142,6 +142,25 @@ not even configure. If the workflow is ever submitted upstream it has to come
 **after** the fix PRs, or in the same one. Noted in
 [pr-plan.md](pr-plan.md).
 
+## After editing the workflow, check the job list
+
+Not just that the YAML parses, and not just the steps of the job being worked
+on:
+
+```sh
+ruby -ryaml -e 'puts YAML.load_file(".github/workflows/build.yml")["jobs"].keys'
+```
+
+A whole job was once deleted by an edit that took a slice from a marker comment
+to the end of the file — the Windows job happened to sit after that marker. The
+file stayed valid YAML, the steps that were inspected looked correct, and the
+run went green with three jobs instead of four. Windows coverage was gone for
+three commits before anyone noticed, and a report in between claimed "all four
+jobs green" while the run had listed three.
+
+A missing job cannot fail. It is the one kind of regression this workflow
+cannot catch about itself.
+
 ## Debugging a failed run
 
 ```sh
