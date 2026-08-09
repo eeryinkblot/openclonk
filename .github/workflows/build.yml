@@ -6,6 +6,10 @@ on:
   pull_request:
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   GTEST_VERSION: "1.10.0"
 
@@ -13,6 +17,7 @@ jobs:
   headless:
     name: Headless — ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
@@ -36,7 +41,9 @@ jobs:
 
       - name: Install dependencies (macOS)
         if: runner.os == 'macOS'
-        run: brew install libpng jpeg-turbo freetype miniupnpc
+        # libepoxy is not optional even for HEADLESS_ONLY: OC_SYSTEM_SOURCES
+        # pulls in src/platform/C4AppMac.mm on Apple, which includes epoxy/gl.h.
+        run: brew install libpng jpeg-turbo freetype miniupnpc libepoxy
 
       # CMake compiles gtest/gmock into the project, so it needs their sources.
       # A packaged googletest only ships headers and libraries and will not do.
@@ -60,11 +67,19 @@ jobs:
             exit 1
           fi
 
+      # `-j` with no number means unlimited parallelism to GNU Make: ~500
+      # translation units spawn as many compilers, the runner runs out of
+      # memory and is shut down mid-build. Bound it to the core count.
       - name: Build
-        run: cmake --build build -j
+        run: |
+          jobs=$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 2)
+          echo "building with $jobs jobs"
+          cmake --build build --parallel "$jobs"
 
       - name: Build test targets
-        run: cmake --build build --target tests aul_test StdMeshMath -j
+        run: |
+          jobs=$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 2)
+          cmake --build build --target tests aul_test StdMeshMath --parallel "$jobs"
 
       # ctest only knows StdMeshMath and aul_test: add_test() is called from the
       # create_test() helper, and the tests target is declared without it. Run
@@ -110,6 +125,7 @@ jobs:
   macos-app:
     name: macOS app bundle
     runs-on: macos-latest
+    timeout-minutes: 45
 
     steps:
       - uses: actions/checkout@v4
@@ -129,7 +145,9 @@ jobs:
             || { echo "::error::no real OpenAL was selected"; exit 1; }
 
       - name: Build
-        run: cmake --build build-gui -j
+        run: |
+          jobs=$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 2)
+          cmake --build build-gui --parallel "$jobs"
 
       # install_name_tool invalidates signatures, and on arm64 an invalid
       # signature is fatal: the kernel refuses to map the image. The bundled
