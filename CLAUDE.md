@@ -114,20 +114,43 @@ the engine substitutes a stand-in) and, in headless builds, `Error at sound file
 
 Two independent test layers.
 
-**C++ unit tests (GoogleTest/GMock).** Both targets are `EXCLUDE_FROM_ALL`, so name them explicitly.
-CMake must find gtest/gmock *sources* (`gtest-all.cc`, `gmock-all.cc`), not just headers — pass
-`-DGTEST_ROOT=` / `-DGMOCK_ROOT=` if they are not in `/usr/src/gtest`. **Not currently available
-on this machine**, so neither target exists in `build/` or `build-gui/`; nothing in this fork has
-been checked against them.
+**C++ unit tests (GoogleTest/GMock).** All three targets are `EXCLUDE_FROM_ALL`, so name them
+explicitly. CMake needs gtest/gmock **sources** (`gtest-all.cc`, `gmock-all.cc`), not headers or
+libraries — it compiles them into the project. A Homebrew `googletest` install does not work;
+point at an unpacked release instead.
+
+Set up here at `/Users/tk/Repositories/clonk/deps/googletest-release-1.10.0` (outside the repo):
 
 ```sh
-cmake --build build --target tests aul_test StdMeshMath
-./build/tests/tests                       # C4NetIO, C4Value, StdFile, string table, unicode, DirectExec
-./build/tests/aul_test                    # C4Script (Aul) language tests
-./build/tests/tests --gtest_filter='C4NetIOTest.*'   # single test / suite
-SKIP_IPV6_TEST=1 ./build/tests/tests      # when the host has no ::1
-ctest --test-dir build                    # runs the create_test() targets
+curl -sSL -o gtest.tar.gz \
+  https://github.com/google/googletest/archive/refs/tags/release-1.10.0.tar.gz
+tar xzf gtest.tar.gz            # yields googletest-release-1.10.0/{googletest,googlemock}
 ```
+
+**Version matters.** The tests use the arity-based `MOCK_METHOD1`/`MOCK_METHOD2` macros, dropped
+in later googletest releases, and the project is `CMAKE_CXX_STANDARD 14` with
+`STANDARD_REQUIRED ON`, which rules out 1.15+. 1.10.0 satisfies both.
+
+```sh
+GT=/Users/tk/Repositories/clonk/deps/googletest-release-1.10.0
+/opt/homebrew/bin/cmake -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo -DHEADLESS_ONLY=ON \
+    -DGTEST_ROOT=$GT/googletest -DGMOCK_ROOT=$GT/googlemock .
+/opt/homebrew/bin/cmake --build build --target tests aul_test StdMeshMath -j8
+
+./build/tests/tests          # 15 tests: C4NetIO, C4Value, StdFile, string table, unicode, DirectExec
+./build/tests/aul_test       # 52 tests: C4Script (Aul) language
+./build/tests/StdMeshMath    # 5 tests: vector/quaternion math
+./build/tests/tests --gtest_filter='C4NetIOTest.*'   # single test / suite
+SKIP_IPV6_TEST=1 ./build/tests/tests                 # when the host has no ::1 (not needed here)
+```
+
+All 72 pass as of the last check.
+
+Two quirks worth knowing: `enable_testing()` lives in `tests/CMakeLists.txt`, so the ctest
+manifest is in `build/tests`, not `build` — use `ctest --test-dir build/tests`. And that only
+covers `StdMeshMath` and `aul_test`, because `add_test()` is called from the `create_test()`
+helper and the `tests` target is declared without it. **Run `./build/tests/tests` by hand**;
+a green ctest run does not mean it passed.
 
 `tests/aul/*` execute C4Script snippets through the standalone script engine
 (`AulTest::RunCode/RunScript/RunExpr`) and assert on the resulting `C4Value` — this is the

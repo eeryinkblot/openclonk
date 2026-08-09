@@ -456,5 +456,33 @@ Known, deliberately left alone:
 | `c4group` exits 0 after "Pack failed" | `src/c4group/C4GroupMain.cpp` |
 | Redundant `mac mac-arm64` in the version line | `cmake/Version.cmake`, upstream behaviour on all platforms |
 | Bundle resource seal stale after data packing | POST_BUILD ordering in `CMakeLists.txt` |
-| `tests` / `aul_test` cannot be built | gtest/gmock sources not present |
+| `ctest` covers only 2 of the 3 test binaries | `add_test()` is only called from `create_test()`, which `tests` does not use |
 | CI is dead (Travis, AppVeyor with VS 2017) | `.travis.yml`, `appveyor.yml` |
+
+## Unit tests
+
+Not a divergence — no source change was needed — but worth recording since the
+targets had never been built here.
+
+With googletest 1.10.0 unpacked outside the repo and passed via `-DGTEST_ROOT=`
+/ `-DGMOCK_ROOT=`, all three targets build clean and **all 72 tests pass** on
+arm64 macOS:
+
+| Binary | Tests | Suites |
+| --- | --- | --- |
+| `tests` | 15 | C4NetIO, C4StringTable, C4Value, DirectExec, StdFile, UnicodeHandling |
+| `aul_test` | 52 | Aul math, predefined functions, death, diagnostics, syntax |
+| `StdMeshMath` | 5 | vector, quaternion |
+
+`SKIP_IPV6_TEST` is not needed on this machine; the C4NetIO tests pass with
+IPv6 enabled.
+
+Version choice is constrained from both sides: the tests use the arity-based
+`MOCK_METHOD1`/`MOCK_METHOD2` macros that later googletest releases dropped,
+and `CMAKE_CXX_STANDARD 14` with `STANDARD_REQUIRED ON` rules out 1.15+.
+1.10.0 sits in the remaining window.
+
+This means the engine-side changes in this fork are now covered by whatever
+those tests cover — which is `libmisc` and `libc4script`, not the macOS
+platform layer where all the fixes live. None of the nine changes is exercised
+by them.
