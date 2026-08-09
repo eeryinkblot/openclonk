@@ -297,10 +297,13 @@ jobs:
           Pop-Location
           Write-Host "pack/unpack round-trip ok"
 
-      # A failing operation must now be visible in the exit code on Windows too.
+      # A failing operation must be visible in the exit code here too.
+      #
+      # Naming a nonexistent group is not a failure: ProcessGroup() opens with
+      # do_create set, so c4group creates it and legitimately succeeds. Use a
+      # usage error instead, which has no filesystem semantics to get wrong.
       - name: A failed operation must not report success
         run: |
-          $exe = $env:C4GROUP
-          & $exe does-not-exist.ocg -l 2>$null
-          if ($LASTEXITCODE -eq 0) { throw "c4group reported success for a missing group" }
-          Write-Host "failure is reported in the exit code"
+          & $env:C4GROUP src-dir -t 2>$null
+          if ($LASTEXITCODE -eq 0) { throw "c4group reported success for a failed pack" }
+          Write-Host "failure is reported in the exit code ($LASTEXITCODE)"

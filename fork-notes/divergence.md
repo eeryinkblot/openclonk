@@ -524,6 +524,19 @@ too — a successful pack prints `Status: ` with an empty message. Marking it
 would make every successful pack exit non-zero. It carries a comment saying
 so, because it looks exactly like a site that was missed.
 
+### A surprise worth knowing
+
+Naming a group that does not exist is **not** an error: `ProcessGroup()` calls
+`hGroup.Open(szFilename, true)`, and that second argument is `do_create`, so
+c4group creates the file and legitimately exits 0.
+
+This cost a CI round trip. The local check for "a missing group file must fail"
+passed on macOS only because the path used was under a directory that does not
+exist, so creation failed for an unrelated reason; on Windows the same test used
+a writable directory, the file was created, and the assertion was simply wrong.
+Negative tests here should use a usage error, which has no filesystem semantics
+to get wrong.
+
 ### Risk
 
 "Unknown option" and "Error forking" previously warned and carried on; both now
