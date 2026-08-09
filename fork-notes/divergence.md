@@ -488,13 +488,56 @@ and `c4script`, so `openclonk` still gets the include.
 
 ---
 
+## 11. `c1a26fc7b` — c4group reported success after failing
+
+**Files:** `src/c4group/C4GroupMain.cpp`
+
+### Motivation
+
+`iResult` was declared at file scope, returned from `main()`, and **never
+assigned anywhere**. The tool therefore exited 0 no matter what happened.
+
+This is what let the `fdopen` defect (see 4 above) go unnoticed for so long:
+c4group printed "Pack failed" to stderr, returned success, and
+`cmake --build . --target groups` reported a completed build while writing
+zero-byte archives.
+
+### Technical effect
+
+Routes the 26 genuine failure reports through an `ErrorOut()` helper that
+prints and sets the flag. Verified across success and failure cases:
+
+| Invocation | Before | After |
+| --- | --- | --- |
+| successful pack / unpack | 0 | 0 |
+| `-t` with no destination | 0 | 1 |
+| missing group file | 0 | 1 |
+| unknown command | 0 | 1 |
+| all 13 game data groups | 0 | 0 |
+
+### The one site left alone
+
+The `"Status: %s"` line after a command runs is guarded by
+`GetError() != "No Error"`, which looks like an error check but is not: a
+completed operation leaves the error string as `""`, so it fires on success
+too — a successful pack prints `Status: ` with an empty message. Marking it
+would make every successful pack exit non-zero. It carries a comment saying
+so, because it looks exactly like a site that was missed.
+
+### Risk
+
+"Unknown option" and "Error forking" previously warned and carried on; both now
+fail. They mean the tool did not do what it was asked, but they are the two
+most likely to affect an existing workflow.
+
+---
+
 ## Not addressed
 
 Known, deliberately left alone:
 
 | Issue | Where |
 | --- | --- |
-| `c4group` exits 0 after "Pack failed" | `src/c4group/C4GroupMain.cpp` |
 | Redundant `mac mac-arm64` in the version line | `cmake/Version.cmake`, upstream behaviour on all platforms |
 | Bundle resource seal stale after data packing | POST_BUILD ordering in `CMakeLists.txt` |
 | `ctest` covers only 2 of the 3 test binaries | `add_test()` is only called from `create_test()`, which `tests` does not use |

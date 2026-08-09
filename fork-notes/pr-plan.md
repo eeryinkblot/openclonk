@@ -120,6 +120,20 @@ A one-line move of an include inside a guard the file already has. Independent,
 though it pairs naturally with PR 4 since both make `HEADLESS_ONLY` behave as
 documented on macOS.
 
+### PR 6 — c4group: report failures in the exit code
+
+| | |
+| --- | --- |
+| Commits | `c1a26fc7b` |
+| Files | `src/c4group/C4GroupMain.cpp` |
+| Effect | A failed pack stops being reported as success |
+
+Platform-independent, unlike everything else here, and a good companion to
+PR 1: that fixes the packing failure, this makes any future one visible.
+
+Flag two things in the PR text — the deliberately unmarked "Status:" line, and
+that "Unknown option" and "Error forking" now fail where they used to warn.
+
 ### PR 5 — macOS: audio and app bundling
 
 | | |

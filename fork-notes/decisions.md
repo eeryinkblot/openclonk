@@ -24,6 +24,7 @@ attractive again.
 | [ADR-012](#adr-012--install-libepoxy-in-ci-rather-than-making-headless_only-live-up-to-its-name) | Install libepoxy in CI | **superseded by ADR-014** |
 | [ADR-013](#adr-013--add-mac-arm64-without-touching-mac-x86) | Add `mac-arm64` without touching `mac-x86` | accepted |
 | [ADR-014](#adr-014--move-the-epoxy-include-behind-use_console-rather-than-dropping-the-file) | Move the epoxy include behind `USE_CONSOLE` | accepted |
+| [ADR-015](#adr-015--route-c4group-failures-through-a-helper-and-leave-one-site-alone) | Route c4group failures through a helper | accepted |
 
 ---
 
@@ -415,3 +416,41 @@ wrong reason on a runner that happens to have it.
 The lesson worth keeping: ADR-012 guessed at the fix while deferring it, and the
 guess was wrong in a way that would have broken the build. Deferring a fix is
 fine; recording an untested guess as the likely solution is what misled.
+
+---
+
+## ADR-015 — Route c4group failures through a helper, and leave one site alone
+
+**Context.** `iResult` in `C4GroupMain.cpp` was returned from `main()` but never
+assigned, so c4group always exited 0. There are 27 places that print to stderr.
+
+**Decision.** Add an `ErrorOut()` helper that prints and sets the flag, and use
+it at the 26 sites that report a genuine failure. Leave the 27th — the
+`"Status: %s"` line after a command runs — as a plain `fprintf`.
+
+**Alternatives.**
+
+- *Assign `iResult = 1` at each site.* Same number of edited lines, but every
+  future error path has to remember the assignment. The helper makes the
+  intent explicit and is the obvious thing to copy.
+- *Mark all 27 sites.* What a mechanical reading of the code suggests, and it
+  would have been wrong. The `"Status:"` line is guarded by
+  `GetError() != "No Error"`, which reads like an error check but is not: a
+  completed operation leaves the string as `""`, so it fires on success too.
+  Confirmed empirically before touching it — a successful pack prints
+  `Status: ` with an empty message and produces a valid 79-byte archive.
+  Marking it would have made every successful pack exit non-zero and broken
+  the build in a way that looks like the fix working.
+- *Only mark the "Pack failed" paths*, the ones that caused the trouble.
+  Narrower and safer, but it leaves the same trap armed for unpack, update
+  generation and update application.
+
+**Consequences.** Two sites are judgement calls: "Unknown option" and
+"Error forking" previously warned and carried on. Both mean the tool did not do
+what it was asked, so they now fail, but they are the ones most likely to
+affect an existing workflow — called out in the commit message and in
+[pr-plan.md](pr-plan.md) so a reviewer can object.
+
+The excluded site now carries a comment explaining why it is not marked. Without
+it, the next reader would see 26 converted calls and one `fprintf` and assume
+an oversight.
