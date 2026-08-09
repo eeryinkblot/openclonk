@@ -193,6 +193,19 @@ Pairs naturally with PR 4 — same class of defect, same file, opposite platform
 above, so it has to follow them or be squashed together with them. It also
 pairs with PR 8, which deletes what it replaces.
 
+### PR 11 — cosmetic: stop repeating the platform in the version string
+
+| | |
+| --- | --- |
+| Commits | `1736155a4` |
+| Files | `cmake/Version.cmake` |
+| Effect | `Version: 9.0-alpha mac-arm64` instead of `9.0-alpha mac mac-arm64` |
+
+Presentation, not a defect — upstream shows the same redundancy everywhere, so a
+maintainer may simply not care. Pairs with PR 4b, which added the architecture
+in the first place. Mention in the PR text that the HTTP User-Agent loses its
+platform suffix, and that the string is provably never compared.
+
 ### PR 5 — macOS: audio and app bundling
 
 | | |

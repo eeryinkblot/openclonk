@@ -714,13 +714,42 @@ without it is unaffected.
 
 ---
 
+## 17. `1736155a4` — the version string repeated the platform
+
+**Files:** `cmake/Version.cmake`
+
+### Motivation
+
+    Version: 9.0-alpha mac mac-arm64 (…)
+
+`cmake/Version.cmake` appends a platform word to `C4VERSION`, and
+`C4Application.cpp:98` logs that next to `C4_OS`, which already carries platform
+*and* architecture.
+
+### Technical effect
+
+Drops the word. Verified first that the string is never compared anywhere:
+network compatibility goes through `C4XVER1`/`C4XVER2`, checked in
+`C4Network2.cpp:1246` as `C4XVER1*100 + C4XVER2`, so nothing can break.
+
+What changes is display only — the log, the startup dialog, the c4group banner,
+the crash message, and the HTTP User-Agent, which becomes `OpenClonk/9.0-alpha`
+without a platform suffix. Where a server wants the platform it already receives
+`C4_OS` as a separate query parameter.
+
+### Risk
+
+A deliberate divergence in presentation rather than a defect fix: upstream shows
+the same redundancy on every platform. Recorded as such.
+
+---
+
 ## Not addressed
 
 Known, deliberately left alone:
 
 | Issue | Where |
 | --- | --- |
-| Redundant `mac mac-arm64` in the version line | `cmake/Version.cmake`, upstream behaviour on all platforms |
 | `C4GROUP_TOOL_ONLY` still defines libc4script and libopenclonk, so the default `all` target tries to compile sources needing PNG and JPEG | `CMakeLists.txt`; the Windows CI job builds the `c4group` target explicitly to work around it |
 
 ## Unit tests
