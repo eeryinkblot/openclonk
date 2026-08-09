@@ -9,11 +9,12 @@ script engine, or anything that could affect network synchronisation — the
 91,026 lines of C4Script under `planet/` linked without a single warning on the
 very first build.
 
-Six of the eight fail **silently**: no compiler error, no log line, no non-zero
-exit. `c4group` reported success while writing zero-byte archives, the server
-sat in an event loop without printing anything, the mouse discarded every event.
-That is the class of defect a dead CI cannot catch and only running the thing
-reveals.
+Four of the ten announced themselves properly, as compile or configure errors
+(1, 2, 3, 10). The rest did not. `c4group` reported success while writing
+zero-byte archives, the server sat in an event loop without printing anything,
+the mouse discarded every event, and the audio path reported a working device
+while the engine had sound switched off in its config. That is the class of
+defect a dead CI cannot catch and only running the thing reveals.
 
 For how these group into pull requests, see [pr-plan.md](pr-plan.md).
 
@@ -444,6 +445,46 @@ The startup line reads `Version: 9.0-alpha mac mac-arm64`. The first `mac`
 comes from `cmake/Version.cmake:43` appending it to `C4VERSION`, which
 `C4Application.cpp:98` then logs next to `C4_OS`. Upstream looks the same on
 every platform (`win win-x86_64`), so the redundancy was left as it is.
+
+---
+
+## 10. `1105b7e98` — HEADLESS_ONLY required a GL loader on macOS
+
+**Files:** `src/platform/C4AppMac.mm`
+
+### Motivation
+
+The option promises to skip the graphics dependencies, but a headless build
+failed on any machine without libepoxy:
+
+    C4AppMac.mm:21:10: fatal error: 'epoxy/gl.h' file not found
+
+`#include <epoxy/gl.h>` sat at the top of the file, outside the `#ifndef
+USE_CONSOLE` guard that already excludes lines 30-191. Only that guarded region
+— the windowing half — needs OpenGL.
+
+### Technical effect
+
+Moves the include inside the guard. The file stays in the console build,
+because below the guard sit four functions the server genuinely links it for:
+`IsGermanSystem`, `OpenURL`, `EraseItemSafe` and
+`C4AbstractApp::GetGameDataPath`, all plain Cocoa.
+
+It was the only translation unit in `openclonk-server` pulling in a GL loader,
+so the option now lives up to its description. Verified from the compiler's own
+dependency output rather than by trusting the build to fail:
+
+    build/CMakeFiles/openclonk-server.dir/src/platform/C4AppMac.mm.o.d
+      epoxy: 0 hits          (was the only .o.d referencing it)
+      Cocoa: 1 hit           (control: the file is still compiled)
+
+CI asserts the same property on every run, and its macOS headless job no longer
+installs libepoxy at all.
+
+### Risk
+
+None for the GUI build: `USE_CONSOLE` is defined only for `openclonk-server`
+and `c4script`, so `openclonk` still gets the include.
 
 ---
 

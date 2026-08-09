@@ -108,6 +108,18 @@ Worth stating in the PR text that the existing `mac-x86` value is deliberately
 untouched: it is a lookup key on the league and update servers, and Intel Macs
 have always reported it despite being x86_64.
 
+### PR 4c — macOS: HEADLESS_ONLY without a GL loader
+
+| | |
+| --- | --- |
+| Commits | `1105b7e98` |
+| Files | `src/platform/C4AppMac.mm` |
+| Effect | `HEADLESS_ONLY` stops requiring libepoxy on macOS |
+
+A one-line move of an include inside a guard the file already has. Independent,
+though it pairs naturally with PR 4 since both make `HEADLESS_ONLY` behave as
+documented on macOS.
+
 ### PR 5 — macOS: audio and app bundling
 
 | | |

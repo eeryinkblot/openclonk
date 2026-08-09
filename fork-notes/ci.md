@@ -20,6 +20,7 @@ Builds with `HEADLESS_ONLY=ON`, then:
 | Configure, asserting gtest was found | CMake silently omitting the test targets when the sources are missing |
 | Build | — |
 | Build `tests aul_test StdMeshMath` | — |
+| Assert no GL loader in the server | `HEADLESS_ONLY` quietly acquiring a graphics dependency |
 | Run all three binaries individually | `ctest` covering only two of them (see [ADR-010](decisions.md#adr-010--pin-googletest-to-1100-and-fetch-the-sources-in-ci)) |
 | Pack game data | — |
 | Reject empty group files | `c4group` exiting 0 after a failed pack |
@@ -61,7 +62,8 @@ completely broken build. Each check inspects output instead.
 ## Environment constraints discovered while getting it green
 
 Four things had to be handled that are not obvious from the source tree. Each
-took a failed run to find; the reasoning is in
+took a failed run to find. Three are still worked around in the workflow; the
+fourth was fixed in the engine. The reasoning is in
 [decisions.md](decisions.md).
 
 **Build parallelism must be bounded.** `cmake --build build -j` passes a bare
@@ -70,10 +72,13 @@ units spawned as many compilers, the runner ran out of memory and was shut
 down mid-build after 46 minutes with its logs lost. The workflow now passes
 `--parallel "$(getconf _NPROCESSORS_ONLN)"`.
 
-**`HEADLESS_ONLY` is not dependency-free on macOS.** `OC_SYSTEM_SOURCES` pulls
-in `src/platform/C4AppMac.mm` on Apple, which includes `epoxy/gl.h`, so
-libepoxy is required despite the option's description. See
-[ADR-012](decisions.md#adr-012--install-libepoxy-in-ci-rather-than-making-headless_only-live-up-to-its-name).
+**`HEADLESS_ONLY` used to need a GL loader on macOS.** `C4AppMac.mm` included
+`epoxy/gl.h` outside its `USE_CONSOLE` guard. Fixed in the engine rather than
+worked around here, so the macOS headless job installs no libepoxy and a step
+asserts that no translation unit in `openclonk-server` references a GL loader —
+checking the property directly, since a runner that happens to have libepoxy
+would otherwise make the check pass for the wrong reason. See
+[ADR-014](decisions.md#adr-014--move-the-epoxy-include-behind-use_console-rather-than-dropping-the-file).
 
 **The engine has to find its data.** `C4Reloc::Init()` prefers a `planet`
 folder next to the executable and otherwise falls back to `OC_SYSTEM_DATA_DIR`,

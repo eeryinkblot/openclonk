@@ -21,8 +21,9 @@ attractive again.
 | [ADR-009](#adr-009--hold-stdin-open-in-ci-instead-of-letting-the-engine-self-terminate) | Hold stdin open in CI | accepted |
 | [ADR-010](#adr-010--pin-googletest-to-1100-and-fetch-the-sources-in-ci) | Pin googletest to 1.10.0 | accepted |
 | [ADR-011](#adr-011--stage-packed-groups-next-to-the-binary-instead-of-installing-to-a-prefix) | Stage packed groups next to the binary | accepted |
-| [ADR-012](#adr-012--install-libepoxy-in-ci-rather-than-making-headless_only-live-up-to-its-name) | Install libepoxy in CI | accepted, deferring the real fix |
+| [ADR-012](#adr-012--install-libepoxy-in-ci-rather-than-making-headless_only-live-up-to-its-name) | Install libepoxy in CI | **superseded by ADR-014** |
 | [ADR-013](#adr-013--add-mac-arm64-without-touching-mac-x86) | Add `mac-arm64` without touching `mac-x86` | accepted |
+| [ADR-014](#adr-014--move-the-epoxy-include-behind-use_console-rather-than-dropping-the-file) | Move the epoxy include behind `USE_CONSOLE` | accepted |
 
 ---
 
@@ -338,6 +339,10 @@ install rules remain untested.
 
 ## ADR-012 — Install libepoxy in CI rather than making `HEADLESS_ONLY` live up to its name
 
+> **Superseded by [ADR-014](#adr-014--move-the-epoxy-include-behind-use_console-rather-than-dropping-the-file).**
+> Kept because the reasoning for deferring was sound and the alternative it
+> sketched turned out to be wrong.
+
 **Context.** `HEADLESS_ONLY` claims to skip graphics dependencies, but on Apple
 `OC_SYSTEM_SOURCES` pulls in `src/platform/C4AppMac.mm`, which includes
 `epoxy/gl.h`. The macOS headless job failed on a clean runner.
@@ -352,9 +357,7 @@ install rules remain untested.
   working out what a console build still needs from it is a separate task with
   its own risk of breaking the GUI build.
 
-**Consequences.** The option stays misleading on macOS. Recorded under
-*Not addressed* in [divergence.md](divergence.md) so it is not mistaken for
-intended behaviour.
+**Consequences.** The option stays misleading on macOS.
 
 ---
 
@@ -380,3 +383,35 @@ query parameter sent to the league and update servers.
 **Consequences.** Apple's two architectures now use different naming
 conventions from each other (`mac-x86` for x86_64, `mac-arm64`). Ugly, and worth
 explaining in the PR text.
+
+---
+
+## ADR-014 — Move the epoxy include behind `USE_CONSOLE` rather than dropping the file
+
+**Context.** Resolves [ADR-012](#adr-012--install-libepoxy-in-ci-rather-than-making-headless_only-live-up-to-its-name).
+`src/platform/C4AppMac.mm` included `<epoxy/gl.h>` unconditionally, so
+`HEADLESS_ONLY` required a GL loader on macOS despite promising the opposite.
+
+**Decision.** Move the include inside the `#ifndef USE_CONSOLE` guard the file
+already has, and keep the file in the console build.
+
+**Alternatives.**
+
+- *Exclude `C4AppMac.mm` from console builds*, as ADR-012 proposed. **This would
+  have been wrong.** Only lines 30–191 are guarded; below the guard sit four
+  functions a console build genuinely links this file for — `IsGermanSystem`,
+  `OpenURL`, `EraseItemSafe` and `C4AbstractApp::GetGameDataPath`, all plain
+  Cocoa. Dropping the file would have produced four undefined symbols.
+- *Move the four functions into a separate file.* Tidier separation, but it
+  splits a platform file for the benefit of one include and makes the diff
+  larger than the problem.
+
+**Consequences.** `openclonk-server` no longer references a GL loader in any
+translation unit, so the option is honest on macOS. CI asserts this directly by
+grepping the compiler's own `.o.d` dependency files rather than relying on
+libepoxy being absent from the runner — otherwise the check would pass for the
+wrong reason on a runner that happens to have it.
+
+The lesson worth keeping: ADR-012 guessed at the fix while deferring it, and the
+guess was wrong in a way that would have broken the build. Deferring a fix is
+fine; recording an untested guess as the likely solution is what misled.
