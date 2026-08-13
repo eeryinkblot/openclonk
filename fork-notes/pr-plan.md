@@ -251,11 +251,13 @@ Consider splitting `6333d5498` off into its own PR; it is clean, while
 
 | Commits | Files |
 | --- | --- |
-| — | `CLAUDE.md` |
+| `4d1e0ba08`, `18a459494` | `CLAUDE.md` |
 | — | `fork-notes/` |
 
-Both are fork-local by policy, so listing individual commits earns nothing —
-every commit touching either file belongs here by definition.
+Both files are fork-local by policy, so the `fork-notes/` row stays a blanket
+one. `CLAUDE.md` keeps explicit hashes because that is what makes the guard
+usable in the other direction: when a PR branch turns out to carry one of these,
+the hash names it. Add yours when you touch the file.
 
 ## Adding new commits
 
