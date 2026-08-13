@@ -490,3 +490,48 @@ whether the new binary belongs in the suite rather than letting it be forgotten.
 Also worth knowing: `enable_testing()` is called from `tests/CMakeLists.txt`,
 not the top level, so the manifest is in `build/tests` and
 `ctest --test-dir build` finds nothing at all.
+
+---
+
+## ADR-017 — Run c4group through `cmake -E env` rather than moving the binaries
+
+**Context.** On the Visual Studio generator the `groups` target died with
+`MSB8066 … Code 9009` before packing anything: the pack command came out as a
+bare `c4group.exe`. Two independent things have to be true for that. CMake
+relativises the *command* of a custom build step against the directory of the
+generated project file, and `oc_set_target_names()` puts the executables in
+exactly that directory — so the path has nothing left to relativise. MSBuild
+then runs custom build steps with `NoDefaultCurrentDirectoryInExePath` set,
+which is the switch that stops `cmd.exe` resolving a bare name against the
+working directory.
+
+**Decision.** Invoke the packer as
+`${CMAKE_COMMAND} -E env $<TARGET_FILE:c4group> …`. Only the command is
+relativised, not its arguments; `cmake.exe` lives outside the build tree and so
+keeps an absolute path, and the c4group path it is handed arrives intact.
+
+**Alternatives.**
+
+- *Just use `$<TARGET_FILE:...>`, the way the `APPLE` branch does.* The first
+  attempt, and it fails identically — the generator relativises the resulting
+  absolute path too and lands back on `c4group.exe`. Worth stating plainly
+  because the `APPLE` branch four lines up makes it look like the obvious fix.
+- *Stop moving the binaries into the build root.* This would make the defect
+  disappear at the source: CMake would emit `RelWithDebInfo\c4group.exe`, which
+  has a directory component and resolves fine. But `oc_set_target_names()` is
+  deliberate fork behaviour, and every consumer of the layout — the CI job, the
+  staging step, the documented paths in platforms.md — would move with it. A
+  packaging convention is not worth rewriting to work around a quoting quirk.
+- *Set `WORKING_DIRECTORY` on the custom command.* Might change what the path is
+  relativised against, but it is unspecified which way CMake resolves the two,
+  and it would silently depend on generator internals. `cmake -E env` states the
+  intent in the command itself.
+- *Wrap in `cmd /c`.* Windows-only, and the branch would have to be maintained
+  against the three other generators that never had the problem.
+
+**Consequences.** One extra process per group, on every platform, for a defect
+that only exists on one. That is the price of not special-casing: 12 groups is
+12 short-lived `cmake -E env` invocations and the packing itself dominates by
+orders of magnitude. It also means Makefile and Ninja builds exercise the same
+code path Windows does, so this cannot rot unnoticed the way a `if(MSVC)` branch
+would.

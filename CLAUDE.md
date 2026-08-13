@@ -70,7 +70,10 @@ to `NativeToolsExport.cmake`, which you point at with `-DIMPORT_NATIVE_TOOLS=`.
 
 `tools/default.nix` builds the whole thing under Nix (`nix-build tools -A ...`, `withEditor` toggles Qt).
 
-### Building on this machine (macOS / Apple Silicon)
+### Building on macOS / Apple Silicon
+
+The fork is developed on two machines — this section and the Windows one below
+each describe one of them, so check which you are on before following either.
 
 Two build directories are kept side by side; both are gitignored via `/build*`.
 
@@ -105,6 +108,43 @@ Not available here:
 - **gtest/gmock sources** are not installed, so the `tests` and `aul_test` targets do not
   exist. Pass `-DGTEST_ROOT=` / `-DGMOCK_ROOT=` pointing at *sources* to get them.
 
+### Building on Windows (x64 / MSVC)
+
+Verified end to end: headless, unit tests, packing, and a launched `openclonk.exe`.
+The engine needed no source change. `fork-notes/platforms.md` has the full account —
+toolchain install, timings, and what the result does *not* prove.
+
+Dependencies come from vcpkg at `C:\Development\vcpkg`; googletest sources are unpacked
+at `C:\Development\deps\googletest-release-1.10.0`.
+
+```powershell
+$cmake = "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe"
+
+& $cmake -B build -A x64 -DHEADLESS_ONLY=ON `
+  -DCMAKE_TOOLCHAIN_FILE=C:/Development/vcpkg/scripts/buildsystems/vcpkg.cmake `
+  -DVCPKG_TARGET_TRIPLET=x64-windows .
+& $cmake --build build --config RelWithDebInfo          # no --parallel: /MP is already set
+
+& $cmake -B build-gui -A x64 -DHEADLESS_ONLY=OFF `
+  -DCMAKE_TOOLCHAIN_FILE=C:/Development/vcpkg/scripts/buildsystems/vcpkg.cmake `
+  -DVCPKG_TARGET_TRIPLET=x64-windows .
+& $cmake --build build-gui --config RelWithDebInfo
+```
+
+**`cmake` is not on `PATH`** here either — it ships inside the Build Tools. No
+`vcvars64.bat` is needed; the Visual Studio generator finds MSBuild itself.
+
+Three things that cost time and will again:
+
+- **The config lives in the registry**, under `HKCU\Software\OpenClonk Project\OpenClonk`,
+  not in a file. The `Sound=0` trap described below applies unchanged — look in
+  `…\OpenClonk\Sound`, and set `…\OpenClonk\Graphics\Windowed` to 1 unless you want the
+  engine to take over the display.
+- **`cmake --build --target <t>` does not re-run CMake.** `ZERO_CHECK` is not a
+  dependency of a named target, so an edited `CMakeLists.txt` is ignored without a word.
+- **Git's `tar` shadows the system one** and treats `C:\...` as a remote host. Use
+  `C:\Windows\System32\tar.exe` when a drive letter is involved.
+
 ### Running
 
 ```sh
@@ -121,8 +161,37 @@ permanently whenever it starts without working audio — a headless run is enoug
 never revisits it. Symptom is total silence with no error anywhere and correct volume
 values. Check `[Sound]` there before debugging audio libraries.
 
-Two harmless log lines: `Error loading player "…/Test.ocp"` (the file does not exist,
-the engine substitutes a stand-in) and, in headless builds, `Error at sound file.`
+`Error at sound file.` in headless builds is harmless.
+
+`Error loading player "…/Test.ocp"` is **not**, despite looking it: no stand-in is
+substituted — `C4ClientPlayerInfos` deletes the info and moves on
+(`src/control/C4PlayerInfo.cpp:412`). No human player ever joins, so in the
+`Tests.ocf` scenarios `InitializePlayer` only runs for the script player and
+`LaunchTest(1)` is never reached. The scenario loads, reports `Game started`, and
+executes zero assertions. That is what both the command above and CI actually
+exercise.
+
+On Windows the log is `%APPDATA%\OpenClonk\OpenClonk.log`. The engine finds its data
+next to the executable, so pack and stage first — symlinks need a privilege the build
+does not have, hardlinks do the same job:
+
+```powershell
+& $cmake --build build --config RelWithDebInfo --target groups
+New-Item -ItemType Directory -Force build\planet | Out-Null
+Get-ChildItem build\* -Include *.ocf,*.ocg,*.ocd,*.ocm | ForEach-Object {
+  New-Item -ItemType HardLink -Path "build\planet\$($_.Name)" -Target $_.FullName -Force }
+
+# Music is neither packed nor found via C4Reloc — it has to sit next to the
+# executable, unpacked. Without this you get sound effects and no music, and
+# no log line anywhere says so. See fork-notes/platforms.md.
+cmd /c mklink /J "$PWD\build-gui\Music.ocg" "$PWD\planet\Music.ocg"
+
+.\build-gui\openclonk.exe
+.\build\openclonk-server.exe --language=US planet\Tests.ocf\Movement.ocs Test.ocp
+```
+
+`openclonk-server` has to be killed to stop it: `C4StdInProc` is compiled out on
+Windows, so closing stdin does nothing.
 
 ## Tests
 
@@ -133,7 +202,8 @@ explicitly. CMake needs gtest/gmock **sources** (`gtest-all.cc`, `gmock-all.cc`)
 libraries — it compiles them into the project. A Homebrew `googletest` install does not work;
 point at an unpacked release instead.
 
-Set up here at `/Users/tk/Repositories/clonk/deps/googletest-release-1.10.0` (outside the repo):
+Unpacked outside the repo — `/Users/tk/Repositories/clonk/deps/googletest-release-1.10.0`
+on the macOS machine, `C:\Development\deps\googletest-release-1.10.0` on the Windows one:
 
 ```sh
 curl -sSL -o gtest.tar.gz \
@@ -158,7 +228,10 @@ GT=/Users/tk/Repositories/clonk/deps/googletest-release-1.10.0
 SKIP_IPV6_TEST=1 ./build/tests/tests                 # when the host has no ::1 (not needed here)
 ```
 
-All 72 pass as of the last check.
+All 72 pass as of the last check. On Windows it is **74**: `tests` runs 17 there, because
+`UnicodeHandlingTest` has two registry cases that only exist on that platform. The binaries
+also land in `build\tests\<Config>\` rather than `build/tests/` — `oc_set_target_names()`
+only redirects the four shipped executables.
 
 Two quirks worth knowing: `enable_testing()` lives in `tests/CMakeLists.txt`, so the ctest
 manifest is in `build/tests`, not `build` — use `ctest --test-dir build/tests`. And that only

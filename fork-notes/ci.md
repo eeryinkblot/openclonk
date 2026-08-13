@@ -123,9 +123,12 @@ machine ever ticks. See [ADR-009](decisions.md#adr-009--hold-stdin-open-in-ci-in
 
 ## What it does not cover
 
-- **The rest of Windows.** Only `c4group` is built there. `HEADLESS_ONLY` and
-  the full build need the other libraries from vcpkg, and whether MSVC can
-  compile the engine itself is still unknown — only `libmisc` has been proven.
+- **The rest of Windows.** Only `c4group` is built there. `HEADLESS_ONLY`, the
+  full GUI build, the unit tests and a launched engine have since all been
+  verified by hand on a Windows machine — see
+  [platforms.md](platforms.md#windows-x64) — and needed no source change, so
+  extending this job is now a matter of adding vcpkg packages and build time
+  rather than an open question. Until that happens it is one machine, once.
 - **The Qt editor.** Qt5 is no longer available from Homebrew, so
   `WITH_QT_EDITOR` is off everywhere and `src/editor/` is not compiled.
 - **Actually running the GUI.** `macos-app` builds and inspects the bundle but

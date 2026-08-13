@@ -181,6 +181,26 @@ configuration needing nothing else could not find `zlib.h`.
 
 Pairs naturally with PR 4 — same class of defect, same file, opposite platform.
 
+### PR 9b — CMake: the `groups` target cannot run c4group on the VS generator
+
+| | |
+| --- | --- |
+| Commits | `b0ce04384` |
+| Files | `CMakeLists.txt` |
+| Effect | `cmake --build . --target groups` packs game data on Windows |
+
+Not fork-specific: `oc_set_target_names()` is upstream code, so anyone
+generating a Visual Studio solution and building `groups` hits
+`MSB8066 … code 9009` before a single group is packed. See divergence.md 18 for
+the mechanism and [ADR-017](decisions.md#adr-017--run-c4group-through-cmake--e-env-rather-than-moving-the-binaries)
+for why the obvious `$<TARGET_FILE:...>` fix is not enough.
+
+Independent of PR 9 but from the same family, and a reviewer looking at one will
+find the other easy to accept. Worth stating in the message that the change is
+verified on two generators — Visual Studio and Ninja produce byte-identical
+groups — since it touches a path every platform uses to fix a fault only one
+sees.
+
 ### PR 10 — CI: a GitHub Actions workflow
 
 | | |
@@ -231,8 +251,11 @@ Consider splitting `6333d5498` off into its own PR; it is clean, while
 
 | Commits | Files |
 | --- | --- |
-| `4d1e0ba08` | `CLAUDE.md` |
+| — | `CLAUDE.md` |
 | — | `fork-notes/` |
+
+Both are fork-local by policy, so listing individual commits earns nothing —
+every commit touching either file belongs here by definition.
 
 ## Adding new commits
 

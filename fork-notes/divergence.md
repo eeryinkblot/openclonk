@@ -744,6 +744,63 @@ the same redundancy on every platform. Recorded as such.
 
 ---
 
+## 18. `b0ce04384` — the `groups` target could not run `c4group` under MSBuild
+
+**Files:** `CMakeLists.txt`
+
+### Motivation
+
+`cmake --build build --target groups` fails on Windows before packing a single
+group:
+
+    Generating Arena.ocf
+    Der Befehl "c4group.exe" ist entweder falsch geschrieben oder
+    konnte nicht gefunden werden.
+    Microsoft.CppCommon.targets(254,5): error MSB8066: ... Code 9009
+
+Two things have to line up for this. CMake relativises the *command* of a custom
+build step against the directory holding the generated project file, and
+`oc_set_target_names()` — divergence 14's neighbourhood — puts the binaries in
+exactly that directory, so the path collapses to a bare `c4group.exe`. MSBuild
+then runs custom build steps with `NoDefaultCurrentDirectoryInExePath` set,
+which is precisely the switch that stops `cmd.exe` from resolving a bare name
+against the working directory. The executable sits right there and is still not
+found.
+
+Confirmed directly rather than inferred:
+
+```powershell
+cmd /c "cd /d build && c4group.exe"                                   # found
+cmd /c "cd /d build && set NoDefaultCurrentDirectoryInExePath=1 && c4group.exe"
+# Der Befehl "c4group.exe" ist entweder falsch geschrieben oder ...
+```
+
+Makefiles and Ninja substitute an absolute path, which is why this never showed
+on macOS or Linux. Note that the `APPLE` branch a few lines above already writes
+`$<TARGET_FILE:...>` — but on its own that is *not* enough here: the generator
+relativises the resulting absolute path too, and it collapses to the same bare
+filename. That was the first attempt and it failed identically.
+
+### Technical effect
+
+The pack step goes through `${CMAKE_COMMAND} -E env`. Only the command is
+relativised, not its arguments, and `cmake.exe` lives outside the build tree, so
+it keeps an absolute path and the `$<TARGET_FILE:c4group>` handed to it survives
+intact:
+
+    COMMAND "${CMAKE_COMMAND}" ARGS -E env "$<TARGET_FILE:${native_c4group}>" ...
+
+### Risk
+
+Low, but it is one extra process per group on every platform. The alternative of
+leaving the binaries in `build/<Config>/` — where CMake would emit a path with a
+directory component — would undo a deliberate fork behaviour and change where
+every other step looks for the executables, including the CI job. Cross-compiled
+builds keep working: `native_c4group` is then an imported target, and
+`$<TARGET_FILE:...>` resolves imported targets the same way.
+
+---
+
 ## Not addressed
 
 Known, deliberately left alone:
@@ -769,6 +826,12 @@ arm64 macOS:
 
 `SKIP_IPV6_TEST` is not needed on this machine; the C4NetIO tests pass with
 IPv6 enabled.
+
+The same three binaries build and pass on Windows/MSVC, where `tests` runs 17
+rather than 15 — `UnicodeHandlingTest` has two registry cases that only exist
+there — for **74 of 74**. Note the different layout: the test binaries land in
+`build\tests\<Config>\`, since `oc_set_target_names()` only redirects the four
+shipped executables.
 
 Version choice is constrained from both sides: the tests use the arity-based
 `MOCK_METHOD1`/`MOCK_METHOD2` macros that later googletest releases dropped,
