@@ -1618,9 +1618,21 @@ if(NOT C4GROUP_TOOL_ONLY)
 				)
 			endif()
 		else()
+			# Run c4group through `cmake -E env` rather than naming it directly.
+			# CMake relativises the command of a custom build step against the
+			# directory of the generated project file, and oc_set_target_names()
+			# puts the binaries in exactly that directory, so both the target
+			# name and $<TARGET_FILE:...> collapse to a bare "c4group.exe".
+			# MSBuild runs custom build steps with NoDefaultCurrentDirectoryInExePath
+			# set, which stops cmd.exe from looking in the working directory, and
+			# the step dies with MSB8066 / exit code 9009. Only the command is
+			# relativised, not its arguments: ${CMAKE_COMMAND} lives outside the
+			# build tree and keeps its absolute path, and the c4group path it is
+			# handed survives intact. Makefiles and Ninja pass an absolute path
+			# either way, so this never showed up on macOS or Linux.
 			add_custom_command(
 				OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/${group}
-				COMMAND "${native_c4group}" ARGS "${CMAKE_CURRENT_SOURCE_DIR}/planet/${group}" -t "${CMAKE_CURRENT_BINARY_DIR}/${group}"
+				COMMAND "${CMAKE_COMMAND}" ARGS -E env "$<TARGET_FILE:${native_c4group}>" "${CMAKE_CURRENT_SOURCE_DIR}/planet/${group}" -t "${CMAKE_CURRENT_BINARY_DIR}/${group}"
 				MAIN_DEPENDENCY ${CMAKE_CURRENT_SOURCE_DIR}/planet/${group}
 				DEPENDS "${native_c4group}"
 				VERBATIM
