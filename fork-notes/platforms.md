@@ -53,7 +53,11 @@ brew install cmake libepoxy openal-soft miniupnpc freealut \
   `Using Audio toolkit: OpenAL` at configure time and
   `OpenAL extensions loaded. Available: AL_EFFECT_REVERB, …` at runtime.
 - **Qt5 is gone from Homebrew**, so `WITH_QT_EDITOR` is off and `src/editor/` is
-  not compiled by anything here. Editor code paths are untested by this fork.
+  not compiled *on this machine*. It is compiled and run on Windows, where vcpkg
+  still has Qt5 — so editor code paths are no longer untested outright, but
+  anything macOS-specific in them still is. #8 left the editor branch of the
+  mouse handler alone for exactly that reason, and a Windows build says nothing
+  about it.
 - Unit tests need googletest **sources**, unpacked at
   `/Users/tk/Repositories/clonk/deps/googletest-release-1.10.0`. See CLAUDE.md.
 

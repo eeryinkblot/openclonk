@@ -103,8 +103,9 @@ ALUT, and Ogg/Vorbis must be found** or `FindAudio` silently selects no audio at
 
 Not available here:
 
-- **Qt5** is gone from Homebrew, so `WITH_QT_EDITOR` is off and the editor is not built.
-  Editor code paths in `src/editor/` are therefore untested by anything done in this fork.
+- **Qt5** is gone from Homebrew, so `WITH_QT_EDITOR` is off and the editor is not built
+  here. It *is* built and run on the Windows machine, where vcpkg still carries Qt5 — so
+  `src/editor/` is no longer untested outright, but anything macOS-specific in it is.
 - **gtest/gmock sources** are not installed, so the `tests` and `aul_test` targets do not
   exist. Pass `-DGTEST_ROOT=` / `-DGMOCK_ROOT=` pointing at *sources* to get them.
 
