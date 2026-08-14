@@ -398,6 +398,14 @@ macOS, where it keeps running. Does not apply on Windows at all:
 `STDSCHEDULER_USE_EVENTS` is defined there and `C4AbstractApp` never registers
 the proc.
 
+**The engine exits 2 when you quit before the scenario ends.** `ClonkMain.cpp`
+returns `C4XRV_Aborted` unless `Game.GameOver` is set — `C4XRV_Completed = 0`,
+`C4XRV_Failure = 1`, `C4XRV_Aborted = 2` (`C4Constants.h:70`). Same logic in the
+Windows and the Unix entry point. Intended, and easy to misread as a crash: any
+automation that starts the engine, does something and closes it again gets a
+non-zero status from a completely successful run. Existing CI never noticed
+because it kills the process and discards the status.
+
 **The engine writes `Sound=0` permanently** whenever it starts without working
 audio; a single headless run is enough. Total silence with correct volume
 values and no error anywhere. Check the `[Sound]` section of the config before
