@@ -1,0 +1,12 @@
+[Player]
+Name=Test
+Comment=Player file for the Tests.ocf scenarios. Without one, no human player joins and no test ever starts.
+RankName=Clonk
+
+[Preferences]
+Color=0
+ColorDw=4278190312
+Control=0
+AutoStopControl=1
+AutoContextMenu=1
+ControlSet="WASD_Hotkeys_IntQueue_MouseCon_"

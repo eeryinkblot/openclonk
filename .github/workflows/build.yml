@@ -159,10 +159,20 @@ jobs:
       # quits before the state machine reaches its first PreInit. It leaves no
       # trace beyond "Game cleared", which looks like a clean run. `tail -f`
       # holds the pipe open without ever sending anything.
+      # The player file is passed by absolute path on purpose. A relative .ocp
+      # argument is made absolute against the *working directory* and never goes
+      # through C4Reloc (C4Application.cpp:413), so the bare "Test.ocp" this step
+      # used to pass resolved to a file that has never existed in the repository.
+      # A player that fails to load is not substituted -- C4ClientPlayerInfos
+      # deletes the info (C4PlayerInfo.cpp:412) -- so no human player joined,
+      # InitializePlayer only ran for the scenario's script player, and
+      # LaunchTest(1) was never reached. The scenario reported "Game started"
+      # and ran 0 of its assertions.
       - name: Run a scenario
         run: |
           tail -f /dev/null | ./build/openclonk-server --language=US \
-            "$PWD/planet/Tests.ocf/Movement.ocs" Test.ocp > engine.log 2>&1 &
+            "$PWD/planet/Tests.ocf/Movement.ocs" "$PWD/planet/Test.ocp" \
+            > engine.log 2>&1 &
           pid=$!
           sleep 90
           # Terminating has to be forced. Without an stdin EOF to act on, the
@@ -179,6 +189,34 @@ jobs:
             || { echo "::error::the engine never started the scenario"; exit 1; }
           grep -Eq "C4AulScriptEngine linked - .*, 0 warnings, 0 errors" engine.log \
             || { echo "::error::script engine reported warnings or errors"; exit 1; }
+
+      # Assert the assertions ran. Everything above is satisfied by a scenario
+      # that loads and does nothing, which is exactly the state this suite was
+      # in: 30 scenarios holding 496 doTest() calls, none of them executed.
+      #
+      # This deliberately does NOT fail on a failing assertion yet. Movement.ocs
+      # test 3 fails reproducibly on Windows -- the rock lands at x=372 against
+      # an expected >380, identical to the pixel across runs -- and whether that
+      # is a real platform difference or an expectation that fits no platform is
+      # unknown until this step has produced a baseline on all three. Gating
+      # comes after that, and is tracked separately. Until then the counts are
+      # printed and a failure is loud in the log but does not fail the job.
+      - name: Assert the scenario tests actually ran
+        run: |
+          grep -q "All tests have been completed" engine.log \
+            || { echo "::error::the test harness never finished -- no assertions ran"; exit 1; }
+          total=$(sed -n 's/.*\* \([0-9]\+\) tests total.*/\1/p' engine.log | tail -1)
+          failed=$(sed -n 's/.*[^0-9]\([0-9]\+\) tests failed.*/\1/p' engine.log | tail -1)
+          skipped=$(sed -n 's/.*[^0-9]\([0-9]\+\) tests skipped.*/\1/p' engine.log | tail -1)
+          echo "total=$total failed=$failed skipped=$skipped"
+          [ "${total:-0}" -gt 0 ] \
+            || { echo "::error::the harness ran but reported 0 tests"; exit 1; }
+          grep -E "^\[.*\] \[Fail\]" engine.log || true
+          if [ "${failed:-0}" -gt 0 ] || [ "${skipped:-0}" -gt 0 ]; then
+            echo "::warning::$failed failed, $skipped skipped of $total -- not gating yet, see the note in this workflow"
+          else
+            echo "all $total assertions passed"
+          fi
 
   macos-app:
     name: macOS app bundle
