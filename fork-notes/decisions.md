@@ -535,3 +535,44 @@ that only exists on one. That is the price of not special-casing: 12 groups is
 orders of magnitude. It also means Makefile and Ninja builds exercise the same
 code path Windows does, so this cannot rot unnoticed the way a `if(MSVC)` branch
 would.
+
+---
+
+## ADR-018 — Exclude MSVC from the pkg-config branch instead of fixing the branch
+
+**Context.** `FindAudio.cmake` prefers `pkg_check_modules` whenever pkg-config
+is present. That returns bare library names and reports their location in
+`_LIBRARY_DIRS`, which the module never exports and no caller feeds to
+`link_directories()`. MSVC cannot resolve a bare name, so the link dies with
+`LNK1104` on a library that is installed and was found. It stayed hidden until
+`qt5-base` dragged `pkgconf` into the vcpkg tree and flipped the branch under a
+build that had been working.
+
+**Decision.** Add `AND NOT(MSVC)` to the condition. The `else()` branch is
+already written for `MSVC OR APPLE` and resolves absolute paths through
+`find_library`; it simply loses a race it should never have been in.
+
+**Alternatives.**
+
+- *Export `Audio_LIBRARY_DIRS` and call `link_directories()`.* Fixes the real
+  omission, and is wrong here anyway: `link_directories()` is directory-scoped
+  and order-dependent, which is why CMake has spent a decade steering people
+  away from it. It would also apply globally for one subsystem's benefit.
+- *Resolve the pkg-config names to absolute paths with
+  `find_library(... HINTS ${OpenAL_LIBRARY_DIRS})`.* The most correct fix, and
+  it helps MinGW too. Rejected for scope: it rewrites the path Linux and macOS
+  use daily, in a module nothing tests, to repair a platform that already has a
+  working branch sitting unused. Worth doing if MinGW ever matters.
+- *Leave it and document "do not install pkgconf".* Not viable — pkgconf arrives
+  as a transitive dependency of a package you do want, and nobody will connect a
+  Qt install to an OpenAL link error.
+
+**Consequences.** MSVC now ignores pkg-config for audio even when a deliberate
+pkg-config setup exists. Acceptable: on Windows the library layout comes from
+vcpkg or a manual install, both of which `find_library` handles, and the branch
+is the one this fork has verified — the `build-gui` engine plays sound with full
+EFX through it.
+
+The general defect stays live for any future MSVC-like toolchain that does find
+pkg-config. It is recorded here rather than fixed so the next person meets a
+decision instead of a mystery.

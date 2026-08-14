@@ -201,6 +201,25 @@ verified on two generators — Visual Studio and Ninja produce byte-identical
 groups — since it touches a path every platform uses to fix a fault only one
 sees.
 
+### PR 9c — FindAudio: the pkg-config branch cannot work on MSVC
+
+| | |
+| --- | --- |
+| Commits | `5cec4133b` |
+| Files | `cmake/FindAudio.cmake` |
+| Effect | Audio links on MSVC when pkg-config happens to be installed |
+
+Independent of PR 9 and 9b, same family. The argument is self-contained:
+`pkg_check_modules` reports bare library names, the module never exports the
+`_LIBRARY_DIRS` that say where they are, and MSVC has no default search path to
+fall back on. Reviewers can see it in the file without reproducing anything.
+
+Worth mentioning in the message that the trigger is mundane — installing
+`qt5-base` pulls in `pkgconf` — because it makes the case that this is reachable
+rather than theoretical. Note also what was *not* done and why (resolving the
+pkg-config names through `find_library`), so a reviewer who prefers the general
+fix sees it was considered; [ADR-018](decisions.md) has the reasoning.
+
 ### PR 10 — CI: a GitHub Actions workflow
 
 | | |

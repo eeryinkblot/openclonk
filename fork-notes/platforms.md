@@ -213,9 +213,48 @@ passes 3/3.
 ### Full GUI build — verified here
 
 The same configure with `-DHEADLESS_ONLY=OFF` in a second build directory.
-Builds clean, again with no source change. Qt5 is absent, so no editor — the
-same blind spot as macOS. vcpkg's applocal deployment drops all sixteen DLLs
-next to the executable, so nothing needs staging by hand.
+Builds clean, again with no source change. vcpkg's applocal deployment drops all
+sixteen DLLs next to the executable, so nothing needs staging by hand.
+
+### The Qt editor — verified here
+
+**This is the only platform where the editor can be built at all.** Qt5 is gone
+from Homebrew, which is what made `src/editor/` dead code everywhere; vcpkg has
+`qt5-base` 5.15.19, comfortably above the `5.4` the project asks for.
+
+All 17 editor sources compile, and the editor **runs** — window titled
+`OpenClonk Editor`, with `Qt5Widgets.dll`, `Qt5Core.dll`, `Qt5Gui.dll`,
+`qwindows.dll` and `qwindowsvistastyle.dll` loaded into the process, so it is
+genuinely the Qt console and not merely a successful link. AUTOMOC, AUTOUIC over
+the six `.ui` files and `qt5_add_resources` all work untouched.
+
+```powershell
+C:\Development\vcpkg\vcpkg.exe install qt5-base:x64-windows     # 2.7 h
+cmake -B build-qt -A x64 -DHEADLESS_ONLY=OFF `
+  -DCMAKE_TOOLCHAIN_FILE=C:/Development/vcpkg/scripts/buildsystems/vcpkg.cmake `
+  -DVCPKG_TARGET_TRIPLET=x64-windows .
+cmake --build build-qt --config RelWithDebInfo
+.\build-qt\openclonk.exe --editor <scenario>
+```
+
+Three things to know before repeating it:
+
+- **Leave `DEPLOY_QT_LIBRARIES` off.** `cmake/DeployQt.cmake:32` aborts the
+  configure with `windeployqt not found`; vcpkg's qt5-base ships only
+  `windeployqt.prf`, not the program. Not a defect — the option predates vcpkg,
+  whose own applocal step deploys the Qt DLLs *and* the plugins, writing an
+  empty `[Paths]` `qt.conf` so `plugins/platforms/qwindows.dll` is found beside
+  the executable.
+- **Enabling the editor removes `C4ConsoleWin32.cpp` from the build.** It lives
+  in the `else()` of `WITH_QT_EDITOR` (`CMakeLists.txt:982`), so the two
+  configurations cover *different* code and neither is a superset. Both are
+  worth building; the non-Qt console is verified in `build-gui`, the Qt one
+  here.
+- **Installing Qt breaks audio** until `FindAudio.cmake` is fixed — see the
+  traps below. That one is a real defect and cost the first build.
+
+Not covered even now: the editor on macOS or Linux, where Qt5 availability is
+the original obstacle and unchanged, and CI, which has no display.
 
 Known-good log lines to check against:
 

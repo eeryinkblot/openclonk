@@ -801,6 +801,64 @@ builds keep working: `native_c4group` is then an imported target, and
 
 ---
 
+## 19. `5cec4133b` — installing an unrelated package broke the audio link
+
+**Files:** `cmake/FindAudio.cmake`
+
+### Motivation
+
+Installing `qt5-base` to build the editor made a previously working GUI build
+fail to link, in a target with nothing to do with Qt:
+
+    LINK : fatal error LNK1104: Datei "OpenAL32.lib" kann nicht geöffnet werden.
+
+The library was installed and had been found. Comparing the generated project
+against the working build shows the difference:
+
+    build-gui   C:\...\vcpkg\installed\x64-windows\lib\OpenAL32.lib
+    build-qt    OpenAL32.lib
+
+`FindAudio.cmake` picks its strategy on whether pkg-config exists:
+
+```cmake
+find_package(PkgConfig QUIET)
+if(PKG_CONFIG_FOUND AND NOT(APPLE))
+    pkg_check_modules(OpenAL "openal>=1.13")
+```
+
+`qt5-base` pulls in `pkgconf`, so `find_package(PkgConfig)` starts succeeding
+and the module switches from the `else()` branch — written for `MSVC OR APPLE`,
+resolving absolute paths through `find_library` — to `pkg_check_modules`, which
+reports bare library names and puts their location in `OpenAL_LIBRARY_DIRS`.
+That variable is never exported: the module sets only `Audio_LIBRARIES` and
+`Audio_INCLUDE_DIRS`, and nothing calls `link_directories()` with the dirs. On a
+Unix linker the bare names would still resolve from default paths; MSVC has no
+such fallback.
+
+Worth dwelling on the failure mode: a working configuration silently flips
+because an unrelated package appeared in the dependency tree, and the error
+surfaces at link time in another subsystem. Nothing about audio changed.
+
+### Technical effect
+
+`AND NOT(MSVC)` in the branch condition, so MSVC uses the branch already written
+for it.
+
+### Risk
+
+Low, and deliberately narrow. It only changes behaviour where the alternative is
+a hard link error, and it routes MSVC to a code path this fork has already
+exercised end to end — the `build-gui` engine plays sound with full EFX
+(`Available: AL_EFFECT_REVERB, AL_EFFECT_ECHO, AL_EFFECT_EQUALIZER.
+Unavailable: (none).`), which comes from exactly that branch.
+
+Not fixed the more general way — resolving the pkg-config names to absolute
+paths via `find_library(... HINTS ${OpenAL_LIBRARY_DIRS})` — because that would
+rewrite the path Linux uses and currently works, to fix a platform that has a
+working branch already. See [ADR-018](decisions.md).
+
+---
+
 ## Not addressed
 
 Known, deliberately left alone:
