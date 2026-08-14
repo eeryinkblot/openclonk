@@ -280,10 +280,13 @@ Runtime paths — note that **only the log lives on disk**:
   it is broken on Windows. The closing-stdin trap below therefore does not
   apply — and neither does the way out, so `openclonk-server` cannot be stopped
   by closing its stdin and has to be killed.
-- **The scenario run proves less than the macOS one.** `Movement.ocs` reaches
-  `Game started` with 0 script errors, but not one `Test<N>` assertion executes:
-  `Test.ocp` does not exist, only the script player joins, and `LaunchTest(1)`
-  runs for non-script players only. CI has the same hole on every platform.
+- **Pass the player file by absolute path.** `planet/Test.ocp` exists now, but a
+  relative `.ocp` argument is made absolute against the *working directory* and
+  never consults `C4Reloc` (`C4Application.cpp:413`), so the bare `Test.ocp` in
+  the older command lines only resolves when the working directory happens to
+  contain it. Without a player that loads, no `Test<N>` assertion runs at all
+  and the scenario still reports `Game started` — the state the whole suite was
+  in until then.
 - **CI still covers `C4GROUP_TOOL_ONLY` only.** Everything above is one machine,
   once, by hand.
 

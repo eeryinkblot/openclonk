@@ -150,7 +150,7 @@ Three things that cost time and will again:
 
 ```sh
 open build-gui/openclonk.app                                    # play
-./build/openclonk-server --language=US planet/Tests.ocf/Movement.ocs Test.ocp
+./build/openclonk-server --language=US planet/Tests.ocf/Movement.ocs "$PWD/planet/Test.ocp"
 ```
 
 The engine log goes to `~/Library/Application Support/OpenClonk/OpenClonk.log`, **not**
@@ -164,13 +164,27 @@ values. Check `[Sound]` there before debugging audio libraries.
 
 `Error at sound file.` in headless builds is harmless.
 
-`Error loading player "…/Test.ocp"` is **not**, despite looking it: no stand-in is
-substituted — `C4ClientPlayerInfos` deletes the info and moves on
-(`src/control/C4PlayerInfo.cpp:412`). No human player ever joins, so in the
-`Tests.ocf` scenarios `InitializePlayer` only runs for the script player and
-`LaunchTest(1)` is never reached. The scenario loads, reports `Game started`, and
-executes zero assertions. That is what both the command above and CI actually
-exercise.
+`Error loading player "…/Test.ocp"` is **not** harmless, despite looking it, and if
+you see it the run tested nothing. No stand-in is substituted — `C4ClientPlayerInfos`
+deletes the info and moves on (`src/control/C4PlayerInfo.cpp:412`). No human player
+joins, so `InitializePlayer` only runs for the script player, `LaunchTest(1)` is never
+reached, and the scenario reports `Game started` having executed zero assertions.
+
+**Pass `planet/Test.ocp` by absolute path.** A relative `.ocp` argument is made
+absolute against the *working directory* and never consults `C4Reloc`
+(`C4Application.cpp:413`), so a bare `Test.ocp` resolves only if the working
+directory happens to hold it. A good run says `Player join: Test` and ends with a
+summary:
+
+```
+* 3 tests total
+1 tests failed
+0 tests skipped
+```
+
+That one failure is real and expected for now: `Movement.ocs` test 3 asserts a rock
+position no platform produces (issue #35). CI reports the counts but does not gate on
+them until that is settled.
 
 On Windows the log is `%APPDATA%\OpenClonk\OpenClonk.log`. The engine finds its data
 next to the executable, so pack and stage first — symlinks need a privilege the build
@@ -188,7 +202,7 @@ Get-ChildItem build\* -Include *.ocf,*.ocg,*.ocd,*.ocm | ForEach-Object {
 cmd /c mklink /J "$PWD\build-gui\Music.ocg" "$PWD\planet\Music.ocg"
 
 .\build-gui\openclonk.exe
-.\build\openclonk-server.exe --language=US planet\Tests.ocf\Movement.ocs Test.ocp
+.\build\openclonk-server.exe --language=US planet\Tests.ocf\Movement.ocs "$PWD\planet\Test.ocp"
 ```
 
 `openclonk-server` has to be killed to stop it: `C4StdInProc` is compiled out on
@@ -251,11 +265,15 @@ helper that logs pass/fail per assertion. Copy the pattern from an existing scen
 Run a scenario by passing it to the headless engine:
 
 ```sh
-./openclonk-server --language=US planet/Tests.ocf/Movement.ocs Test.ocp
+./openclonk-server --language=US planet/Tests.ocf/Movement.ocs "$PWD/planet/Test.ocp"
 ```
 
 `tests/start_all_scenarios.rs` (cargo-script) walks every `.ocs` under a planet directory, starts it
-headless, and greps the log for `C4AulScriptEngine linked - N lines, N warnings, N errors`.
+headless, and greps the log for `C4AulScriptEngine linked - N lines, N warnings, N errors`. Note what
+that does *not* do: it passes a bare `Test.ocp` and only checks that the script engine linked, so it
+reports success for scenarios whose assertions never ran. CI runs `Movement.ocs` alone with a real
+player file — the other 29 scenarios, holding most of the 496 `doTest()` calls in the suite, are still
+started by nothing.
 
 ## Engine architecture
 
