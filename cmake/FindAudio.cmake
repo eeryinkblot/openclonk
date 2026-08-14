@@ -16,7 +16,18 @@
 macro(__FINDAUDIO_FINDOPENAL)
 	set(HAVE_ALEXT FALSE)
 	find_package(PkgConfig QUIET)
-	if(PKG_CONFIG_FOUND AND NOT(APPLE))
+	# Not on MSVC either, even when pkg-config is available. pkg_check_modules
+	# reports bare library names and puts their location in _LIBRARY_DIRS, which
+	# this module does not export and nothing calls link_directories() with, so
+	# the link fails with LNK1104 on a library that is installed and found. The
+	# branch below is written for MSVC and resolves absolute paths through
+	# find_library.
+	#
+	# This is not hypothetical: installing qt5-base to get the editor pulls in
+	# pkgconf, which silently flips a working audio configuration to the broken
+	# one. Nothing about audio changed, and the failure surfaces at link time in
+	# an unrelated target.
+	if(PKG_CONFIG_FOUND AND NOT(APPLE) AND NOT(MSVC))
 		pkg_check_modules(OpenAL "openal>=1.13")
 		# OpenAL pkg-config data before 1.15 doesn't have .../AL in the include
 		# path. But we don't want to have to specify <AL/al.h> because some
