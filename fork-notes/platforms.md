@@ -77,9 +77,14 @@ Known-good log lines to check against: `GL 4.1 Metal - … on Apple M1 Pro`,
 ## Linux x86_64
 
 **Verified here** on EndeavourOS / Arch, kernel 7.1.8, up to and including a
-launched and playing `openclonk` — headless, unit tests, packing, a scenario
-run, and the full GL client. The toolchain is far ahead of what CI uses:
-**GCC 16.2.1 and CMake 4.4.2**, against `ubuntu-latest`'s conservative pair.
+launched and playing `openclonk` with **sound and music** — headless, unit
+tests, packing, a scenario run, the full GL client, and an installed tree. The
+toolchain is far ahead of what CI uses: **GCC 16.2.1 and CMake 4.4.2**, against
+`ubuntu-latest`'s conservative pair.
+
+Two things named in this file are still assumptions rather than results: UPnP
+is verified as far as the right source file being compiled, not as a forwarded
+port, and the Qt editor is built but has never been started.
 
 Also **verified in CI** for `HEADLESS_ONLY` on `ubuntu-latest`.
 
@@ -124,19 +129,68 @@ the engine:
 - **`cmake --build --target groups --parallel N` fails intermittently.** See
   the trap below; fixed in `CMakeLists.txt`.
 
-### Audio and UPnP need two extra packages
+### Audio — verified here
 
-`freealut` and `miniupnpc` are the only dependencies not pulled in by something
-else here. Without them the configure is **silent about audio in the way that
-matters**: it prints `Package 'freealut' not found` among a hundred other
-lines and then `Not enabling audio output.`, and the build succeeds. The
-running engine says `Music not available.` / `Error at sound file.` and plays
-nothing at all. `FindAudio` requires OpenAL *and* ALUT *and* Ogg/Vorbis
-together; two out of three is the same as none.
+`freealut` and `miniupnpc` are the only dependencies nothing else pulls in, and
+both had to be installed by hand. With them, `FindAudio` reports
+`Using Audio toolkit: OpenAL` and the engine gets full EFX — the same
+known-good line as macOS and Windows:
 
-`miniupnpc` is optional in a different sense — without it
-`C4Network2UPnPDummy.cpp` is compiled in place of `C4Network2UPnPLinux.cpp` and
-port forwarding silently does nothing.
+    OpenAL extensions loaded. Available: AL_EFFECT_REVERB, AL_EFFECT_ECHO,
+        AL_EFFECT_EQUALIZER. Unavailable: (none).
+
+Sound effects and music both play. Confirmed beyond the log: the process holds
+an uncorked `Stream/Output/Audio` node in PipeWire (`pw-cli ls Node`,
+`node.name = "openclonk"`), so this is audible output rather than a
+successfully initialised silence. `libopenal`, `libalut`, `libvorbisfile`,
+`libvorbis` and `libogg` are all in `ldd build-gui/openclonk`.
+
+`miniupnpc` gets `C4Network2UPnPLinux.cpp` compiled in place of
+`C4Network2UPnPDummy.cpp` — verified by the object file, **not** by forwarding
+a port.
+
+What it looks like *without* them, since that is the state a fresh machine is
+in: the configure prints `Package 'freealut' not found` among a hundred other
+lines and then `Not enabling audio output.`, and the build succeeds. The engine
+then logs `Music not available.` and `Error at sound file.` and is silent.
+`FindAudio` wants OpenAL *and* ALUT *and* Ogg/Vorbis together; two out of three
+is the same as none.
+
+### Music needs an installed tree here, and `Music.ocg` beside the binary does nothing
+
+This is where Linux differs from both other platforms, and the difference is
+not in `C4MusicSystem` but in what `SystemDataPath` means:
+
+| Platform | `SystemDataPath` | So music goes |
+| --- | --- | --- |
+| macOS | `Application.GetGameDataPath()` | in the bundle |
+| Windows | `ExePath` | next to the executable |
+| Linux, `WITH_AUTOMATIC_UPDATE=ON` | `ExePath` | next to the executable |
+| **Linux, default** | **`${CMAKE_INSTALL_PREFIX}/share/games/openclonk/`** | **only into an install** |
+
+`C4Config.cpp:520-538` picks these with `#if`. The default here is the last
+row, so the advice that works on Windows — junction `Music.ocg` next to the
+binary — is a no-op on Linux, and an uninstalled build tree can never have
+music no matter how it is staged.
+
+Installing into a prefix you own is the way to get it, and it works:
+
+```sh
+cmake -B build-install -DCMAKE_BUILD_TYPE=RelWithDebInfo -DHEADLESS_ONLY=OFF \
+    -DCMAKE_INSTALL_PREFIX=<prefix> .
+cmake --build build-install --parallel 24
+cmake --build build-install --target groups
+cmake --install build-install
+<prefix>/games/openclonk          # binary in games/, data in share/games/openclonk/
+```
+
+Result: `Music: UrbanBolero.ogg`. The install rules put all twelve packed
+groups plus the **unpacked** `Music.ocg` directory into
+`share/games/openclonk/`, which is the layout `e324289f8` intended.
+
+`--config=<file>` runs against a config of your choosing, and the
+`UserDataPath` key inside it relocates the log and player data too — the way to
+test without disturbing an existing `~/.clonk`.
 
 ### Runtime paths, and the config trap
 
@@ -158,6 +212,33 @@ Known-good log lines to check against:
 The client runs under a Wayland session (KDE, `XDG_SESSION_TYPE=wayland`)
 through SDL2 — `sdl2-compat` here, not the original SDL2 — and renders a full
 game at GL 4.6 Core.
+
+### One segfault, seen once and not reproduced
+
+Recorded because an unexplained crash is worth more written down than
+remembered. The installed build died on startup with a null dereference while
+drawing the startup dialog:
+
+    Segmentation fault (Address not mapped to object [(nil)])
+    #0  C4Facet::Draw            src/graphics/C4Facet.cpp:68
+    #1  C4GUI::Window::Draw      src/gui/C4GuiContainers.cpp:298
+    #2  C4GUI::Dialog::Draw      src/gui/C4GuiDialogs.cpp:481
+    ...
+    #13 C4Startup::DoStartup     src/gui/C4Startup.cpp:246
+
+backward-cpp caught it, which is itself a first for this fork — the handler has
+never fired on any platform before, and it works.
+
+**Not reproduced.** Five further runs of the same binary, three of them in the
+exact configuration that crashed (`Music.ocg` absent from an existing data
+directory), all reached the menu and stayed there. So it is intermittent, at
+roughly one in six, and no cause is claimed. Frame #0 lands on the line that is
+only a null *guard*, which under `RelWithDebInfo` usually means the real
+faulting instruction is nearby rather than exactly there.
+
+Do not read it as a Linux-specific defect on this evidence. `C4Facet::Draw` and
+the GUI container code are platform-independent, and no other platform has been
+started often enough to say whether they see it too.
 
 ### The Qt editor builds here too
 
@@ -504,14 +585,32 @@ sound effects play, music never does, and the log says nothing at all.
   all — that is also why `groups` produces twelve files and not thirteen.
 - It is **not looked up through `C4Reloc`**. `C4MusicSystem::Init()` calls
   `Config.AtSystemDataPath(C4CFN_Music)`, which is plain string concatenation
-  onto `SystemDataPath`. So music has to sit *directly next to the executable*,
-  not in the `planet` folder every other group is staged into.
-- Nothing reports the absence. `Init()` returns `true` whether or not it found
-  a single song, so the `IDS_PRC_NOMUSIC` branch in `C4Application` never fires;
-  only a failure to initialise the audio *toolkit* logs anything. What does
-  exist is the positive signal — `C4MusicFile::Play()` logs
+  onto `SystemDataPath`. So music goes wherever `SystemDataPath` points — and
+  that is **not the same place on every platform**. On Windows and macOS it is
+  the executable's own directory; on Linux, unless `WITH_AUTOMATIC_UPDATE` is
+  on, it is `${CMAKE_INSTALL_PREFIX}/share/games/openclonk/`. Staging music next
+  to the binary is the fix on the first two and a no-op on the third. Either
+  way it is never the `planet` folder every other group is staged into.
+- **Whether the absence is reported depends on the containing directory, not on
+  the music.** `C4MusicSystem::LoadDir` (`C4MusicSystem.cpp:204-250`) tries to
+  open `<dir>/Music.ocg`, then falls back to opening `<dir>` itself and
+  searching it for that name. Only if *both* fail does it log
+
+      Music File not found: <path>
+
+  So on Windows the directory is the exe directory, which always exists: the
+  fallback succeeds, the search comes up empty, and nothing is said. On Linux
+  the default `/usr/local/share/games/openclonk` usually does not exist at all,
+  and the engine names the exact missing path. Both were observed here — the
+  uninstalled build tree reports it, and an installed tree with `Music.ocg`
+  removed from an existing `share/games/openclonk/` says nothing at all
+  (reproduced three times, eleven log lines, no music line of any kind).
+- `Init()` still returns `true` whether or not it found a single song, so the
+  `IDS_PRC_NOMUSIC` branch in `C4Application` (`C4Application.cpp:561`) reports
+  only a failure to initialise the audio *toolkit*, never an empty playlist.
+  The reliable signal is the positive one — `C4MusicFile::Play()` logs
   `IDS_PRC_PLAYMUSIC` (`Music: <file>` / `Musik: <file>`) per song. **Absence of
-  that line is the check**, since `Music not available.` will never appear.
+  that line is the check**, since `Music not available.` means something else.
 
 For a build tree, junction the source directory next to the binary — and note
 that the music system initialises once at startup, so this needs a restart, not

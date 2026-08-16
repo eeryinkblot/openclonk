@@ -151,8 +151,28 @@ Three things to know:
 ```sh
 mkdir -p build/planet
 for f in build/*.oc*; do ln -sf "../$(basename "$f")" "build/planet/$(basename "$f")"; done
-ln -sfn "$PWD/planet/Music.ocg" build-gui/Music.ocg    # music is never packed on Linux
 ```
+
+**Music cannot be staged that way on Linux, and putting `Music.ocg` next to the
+binary does nothing.** `C4MusicSystem` looks it up under `SystemDataPath`, which is
+`${CMAKE_INSTALL_PREFIX}/share/games/openclonk/` here — not the executable's directory,
+the way it is on macOS and Windows. An uninstalled build tree therefore has no music,
+and says so: `Music File not found: /usr/local/share/games/openclonk/Music.ocg`.
+
+To hear music, install into a prefix you own and run from there:
+
+```sh
+cmake -B build-install -DCMAKE_BUILD_TYPE=RelWithDebInfo -DHEADLESS_ONLY=OFF \
+    -DCMAKE_INSTALL_PREFIX=/tmp/ocinstall .
+cmake --build build-install --parallel 24
+cmake --build build-install --target groups
+cmake --install build-install
+/tmp/ocinstall/games/openclonk        # binary in games/, data in share/games/openclonk/
+```
+
+`--config=<file>` gives a run its own config, and the `UserDataPath` key inside that
+file moves the log and player data with it — useful for a throwaway run that must not
+disturb an existing `~/.clonk`.
 
 ### Building on Windows (x64 / MSVC)
 
