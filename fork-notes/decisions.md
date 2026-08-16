@@ -576,3 +576,78 @@ EFX through it.
 The general defect stays live for any future MSVC-like toolchain that does find
 pkg-config. It is recorded here rather than fixed so the next person meets a
 decision instead of a mystery.
+
+## ADR-019 — Serialise the `groups` target rather than repair `MakeTempFilename`
+
+**Context.** Packing game data in parallel fails intermittently with
+`Pack failed`, because `MakeTempFilename()` (`src/platform/StdFile.cpp:320`)
+picks the lowest unused `<name>.NNN` and hands it back without claiming it. Two
+`c4group` processes in the same directory choose the same temporary file. The
+existing `USES_TERMINAL` guard only binds Ninja; Makefiles ignore it.
+
+**Decision.** Chain each group's output onto the previous one, so the twelve
+pack in sequence under every generator. Leave `MakeTempFilename` alone and
+record why.
+
+**Alternatives.**
+
+- *Fix `MakeTempFilename` to claim the name.* The actual defect, and the fix
+  that would make parallel packing work rather than merely stop being wrong.
+  Rejected on blast radius. Two obvious repairs both fail:
+  - *Create the file with `O_EXCL` after choosing it.* Wrong for several
+    callers. `C4Group.cpp:434` passes the result to a directory creation, and
+    others expect the path to be free, not to exist as an empty file. Making it
+    right means auditing every one of the nine call sites in a function shared
+    by the engine, `c4group` and the standalone script host.
+  - *Put the process id in the name.* The `char*` overload could take it — the
+    buffer is `_MAX_PATH_LEN`. The `StdStrBuf` overload cannot: it writes
+    through `getMData()` into a buffer sized to the current string, so any name
+    longer than `<base>.NNN` is a heap overflow. Two overloads, one of which
+    silently corrupts memory if extended, is not a change to make in passing.
+- *Drop `USES_TERMINAL` and document "do not use `--parallel` with `groups`".*
+  Nobody reads that before typing the command they type for every other target,
+  and the punishment is a corrupt group set that looks complete.
+- *Give each group its own working directory.* Removes the collision without
+  touching engine code, and costs a `WORKING_DIRECTORY` per command. Rejected
+  because it leaves the underlying race intact while making it look solved —
+  the next caller to run two `c4group` processes in one directory gets the
+  original failure with no clue this ever happened.
+
+**Consequences.** Packing stays serial everywhere, which costs about six
+seconds in total and nothing at all on Ninja or macOS, where it already was.
+The real defect stays live for any *other* concurrent `c4group` use, including
+two developers' builds sharing a directory and anything the release scripts do.
+Recorded rather than repaired, so the next person meets a decision instead of a
+mystery — and if `MakeTempFilename` is ever fixed properly, this chaining can go
+away with it.
+
+## ADR-020 — Widen the mock macros instead of pinning googletest harder
+
+**Context.** googletest 1.10.0 stopped compiling on GCC 15 and later, which have
+no transitive `<cstdint>`. The pin existed because the tests used
+`MOCK_METHOD1`/`MOCK_METHOD2`, removed in 1.13.0, and because
+`CMAKE_CXX_STANDARD 14` rules out 1.15+. The window had closed to nothing.
+
+**Decision.** Rewrite the nine mocks to the variadic `MOCK_METHOD` and move CI
+to 1.14.0.
+
+**Alternatives.**
+
+- *Patch the dependency — inject `-include cstdint` on the gtest target.* Two
+  lines, no test changes, and it keeps every machine on the version it already
+  has unpacked. Rejected: it makes the build system carry a workaround for a
+  third-party bug fixed upstream years ago, keyed to a compiler version, and it
+  would have to stay forever because nothing would ever prompt its removal.
+- *Move to gtest 1.17, the version Arch packages.* Wants C++17. Raising
+  `CMAKE_CXX_STANDARD` for the test targets alone is possible and is a much
+  larger argument than this change deserves; raising it project-wide is a
+  separate decision that should be made on its own merits.
+- *Use the installed system googletest.* Not possible as the build is written —
+  CMake compiles `gtest-all.cc` into the project, and a package ships headers
+  and libraries only. That constraint is upstream's and is left alone.
+
+**Consequences.** The supported range is now 1.10.0 through 1.14.0 rather than
+exactly 1.10.0, because the variadic macro predates the pin. macOS and Windows
+keep working with the googletest they already have unpacked, and gain
+`(override)` checking on nine mocks that had none. Only CI actually moves, and
+1.14.0 has not yet run on either hosted runner.

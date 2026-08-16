@@ -72,8 +72,9 @@ to `NativeToolsExport.cmake`, which you point at with `-DIMPORT_NATIVE_TOOLS=`.
 
 ### Building on macOS / Apple Silicon
 
-The fork is developed on two machines — this section and the Windows one below
-each describe one of them, so check which you are on before following either.
+The fork is developed on three machines — this section, the Linux one and the
+Windows one below each describe one of them, so check which you are on before
+following any of them.
 
 Two build directories are kept side by side; both are gitignored via `/build*`.
 
@@ -109,6 +110,50 @@ Not available here:
 - **gtest/gmock sources** are not installed, so the `tests` and `aul_test` targets do not
   exist. Pass `-DGTEST_ROOT=` / `-DGMOCK_ROOT=` pointing at *sources* to get them.
 
+### Building on Linux (Arch / EndeavourOS)
+
+Verified end to end: headless, unit tests, packing, a scenario run, and a launched and
+playing `openclonk`. The engine needed no source change. `fork-notes/platforms.md` has the
+full account, including what the modern toolchain broke outside the engine.
+
+`cmake` **is** on `PATH` here, unlike the other two machines, and it is CMake 4.4 with
+GCC 16 — well ahead of what CI uses, which is the point of this machine.
+
+```sh
+cmake -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo -DHEADLESS_ONLY=ON .
+cmake --build build --parallel 24
+
+cmake -B build-gui -DCMAKE_BUILD_TYPE=RelWithDebInfo -DHEADLESS_ONLY=OFF .
+cmake --build build-gui --parallel 24
+```
+
+Dependencies (`pacman -S`): `base-devel cmake libpng libjpeg-turbo freetype2 zlib curl
+libepoxy openal libogg libvorbis sdl2-compat qt5-base glu mesa`, plus **`freealut` and
+`miniupnpc`**, which are the two nothing else pulls in. Without freealut there is no audio
+at all — `FindAudio` needs OpenAL *and* ALUT *and* Ogg/Vorbis, and says only
+`Not enabling audio output.` in the middle of a long configure.
+
+`qt5-base` is still packaged here, so `WITH_QT_EDITOR` turns itself on by default and
+`src/editor/` is compiled — the only platform besides Windows where that happens. Remember
+that enabling it removes the non-Qt console sources from the build, so the two
+configurations are not nested.
+
+Three things to know:
+
+- **Do not pack groups in parallel on a Makefile generator.** Fixed in `CMakeLists.txt`
+  now, but if you see `Pack failed` and eleven groups where twelve belong, that is what it
+  was. The engine reports it later as `Required object file Objects.ocd not available.`
+- **The config file is `~/.clonk/openclonk/config`** and the `Sound=0` trap applies to it:
+  a single headless run silently disables sound and music for good. Set `[Graphics]
+  Windowed=1` there too before the first GUI run.
+- **Stage the packed groups next to the binary**, as CI does — plain symlinks work here:
+
+```sh
+mkdir -p build/planet
+for f in build/*.oc*; do ln -sf "../$(basename "$f")" "build/planet/$(basename "$f")"; done
+ln -sfn "$PWD/planet/Music.ocg" build-gui/Music.ocg    # music is never packed on Linux
+```
+
 ### Building on Windows (x64 / MSVC)
 
 Verified end to end: headless, unit tests, packing, and a launched `openclonk.exe`.
@@ -116,7 +161,7 @@ The engine needed no source change. `fork-notes/platforms.md` has the full accou
 toolchain install, timings, and what the result does *not* prove.
 
 Dependencies come from vcpkg at `C:\Development\vcpkg`; googletest sources are unpacked
-at `C:\Development\deps\googletest-release-1.10.0`.
+at `C:\Development\deps\googletest-1.14.0`.
 
 ```powershell
 $cmake = "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe"
@@ -217,21 +262,33 @@ explicitly. CMake needs gtest/gmock **sources** (`gtest-all.cc`, `gmock-all.cc`)
 libraries — it compiles them into the project. A Homebrew `googletest` install does not work;
 point at an unpacked release instead.
 
-Unpacked outside the repo — `/Users/tk/Repositories/clonk/deps/googletest-release-1.10.0`
-on the macOS machine, `C:\Development\deps\googletest-release-1.10.0` on the Windows one:
+Unpacked outside the repo — `/Users/tk/Repositories/clonk/deps/googletest-1.14.0` on the
+macOS machine, `C:\Development\deps\googletest-1.14.0` on the Windows one,
+`/home/eeryinkblot/projects/deps/googletest-1.14.0` on the Linux one:
 
 ```sh
 curl -sSL -o gtest.tar.gz \
-  https://github.com/google/googletest/archive/refs/tags/release-1.10.0.tar.gz
-tar xzf gtest.tar.gz            # yields googletest-release-1.10.0/{googletest,googlemock}
+  https://github.com/google/googletest/archive/refs/tags/v1.14.0.tar.gz
+tar xzf gtest.tar.gz            # yields googletest-1.14.0/{googletest,googlemock}
 ```
 
-**Version matters.** The tests use the arity-based `MOCK_METHOD1`/`MOCK_METHOD2` macros, dropped
-in later googletest releases, and the project is `CMAKE_CXX_STANDARD 14` with
-`STANDARD_REQUIRED ON`, which rules out 1.15+. 1.10.0 satisfies both.
+**Version matters, and it is pinned from both ends.** Below 1.14.0 the library itself will not
+compile on a current toolchain: 1.10.0, which this used to pin, omits `#include <cstdint>` in
+`gtest-death-test.cc` and `gtest-port.cc`, and GCC 15 and later stopped supplying it
+transitively. Above it, the project is `CMAKE_CXX_STANDARD 14` with `STANDARD_REQUIRED ON`,
+which rules out 1.15+. Note the tag naming changes at 1.11 — `release-1.10.0` but `v1.14.0`.
+
+The tests used the arity-based `MOCK_METHOD1`/`MOCK_METHOD2` macros, which later googletest
+releases dropped; they now use the variadic `MOCK_METHOD`, which 1.10.0 understands too, so an
+older checkout still works where the compiler tolerates it.
+
+**If a build directory was ever configured without `GTEST_ROOT`, delete it.** On a machine with
+a googletest *package* installed the include path gets cached from the system before the sources
+are known, and adding `-DGTEST_ROOT=` later does not dislodge it. `tests/CMakeLists.txt` guards
+against this now; a build directory configured before that fix still carries the bad value.
 
 ```sh
-GT=/Users/tk/Repositories/clonk/deps/googletest-release-1.10.0
+GT=/Users/tk/Repositories/clonk/deps/googletest-1.14.0
 /opt/homebrew/bin/cmake -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo -DHEADLESS_ONLY=ON \
     -DGTEST_ROOT=$GT/googletest -DGMOCK_ROOT=$GT/googlemock .
 /opt/homebrew/bin/cmake --build build --target tests aul_test StdMeshMath -j8

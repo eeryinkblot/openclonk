@@ -224,7 +224,7 @@ fix sees it was considered; [ADR-018](decisions.md) has the reasoning.
 
 | | |
 | --- | --- |
-| Commits | the `.github/workflows/build.yml` series, starting `91b545a07` |
+| Commits | the `.github/workflows/build.yml` series, starting `91b545a07`; latest `753b74a59` |
 | Files | `.github/workflows/build.yml` |
 | Effect | Replaces the dead Travis and AppVeyor configuration |
 
@@ -244,6 +244,61 @@ Presentation, not a defect — upstream shows the same redundancy everywhere, so
 maintainer may simply not care. Pairs with PR 4b, which added the architecture
 in the first place. Mention in the PR text that the HTTP User-Agent loses its
 platform suffix, and that the string is provably never compared.
+
+### PR 12 — mape: compile under a C23 default
+
+| | |
+| --- | --- |
+| Commits | `83b23b4b6` |
+| Files | `src/mape/mape.c` |
+| Effect | `mape` builds on GCC 15 and later |
+
+The easiest cluster in this file. One parameter, a compiler error quoted in
+full, and a target nobody can build on a current distribution without it.
+Independent of everything else.
+
+Lead the message with the error text rather than the standards history — a
+reviewer who has never seen the C23 change to empty parameter lists will
+recognise the diagnostic immediately.
+
+### PR 13 — CMake: the `groups` target races against itself on Makefiles
+
+| | |
+| --- | --- |
+| Commits | `0ce1ea716` |
+| Files | `CMakeLists.txt` |
+| Effect | `--target groups --parallel N` stops producing an incomplete group set |
+
+Not fork-specific and not platform-specific: the `USES_TERMINAL` guard upstream
+already wrote only binds Ninja, so every Makefile user packing in parallel is
+exposed. Same family as PR 9b and can be sent with it or after it; they touch
+the same block but different lines.
+
+Worth putting in the PR text: the cause is `MakeTempFilename()`, this commit
+does not fix it, and [ADR-019](decisions.md#adr-019--serialise-the-groups-target-rather-than-repair-maketempfilename)
+says why. A reviewer who spots the real bug should find it already
+acknowledged rather than argue for it.
+
+### PR 14 — tests: build against a googletest that still compiles
+
+| | |
+| --- | --- |
+| Commits | `8722c249b`, `3207274f2` |
+| Files | `tests/TestLog.h`, `tests/aul/ErrorHandler.h`, `tests/CMakeLists.txt` |
+| Effect | The three test targets build on GCC 15+, and on hosts with gtest installed |
+
+**Keep both, in this order.** `8722c249b` removes the macros that forced the
+1.10.0 pin; `3207274f2` stops the include path being cached from the system
+before the sources are known. Either alone leaves a machine that cannot build
+the tests.
+
+Both are widenings — the variadic `MOCK_METHOD` exists in 1.10.0 too, and the
+header search is narrowed, not redirected — so neither obliges a reviewer to
+change their own googletest. Say that explicitly; the natural first objection is
+"this bumps a dependency", and it does not.
+
+Independent of PR 7, which registers the `tests` target with ctest, though a
+maintainer may want them together as the test-infrastructure cluster.
 
 ### PR 5 — macOS: audio and app bundling
 
@@ -270,7 +325,7 @@ Consider splitting `6333d5498` off into its own PR; it is clean, while
 
 | Commits | Files |
 | --- | --- |
-| `4d1e0ba08`, `18a459494` | `CLAUDE.md` |
+| `4d1e0ba08`, `18a459494`, `a647ac445` | `CLAUDE.md` |
 | — | `fork-notes/` |
 
 Both files are fork-local by policy, so the `fork-notes/` row stays a blanket

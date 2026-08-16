@@ -859,6 +859,202 @@ working branch already. See [ADR-018](decisions.md).
 
 ---
 
+## 20. `83b23b4b6` — mape's crash handler had no signal number
+
+**Files:** `src/mape/mape.c`
+
+### Motivation
+
+`mape` does not compile on GCC 15 or later:
+
+    src/mape/mape.c:135:25: error: passing argument 2 of 'signal' from
+        incompatible pointer type [-Wincompatible-pointer-types]
+      135 |         signal(SIGSEGV, segv_handler);
+          |                         ^~~~~~~~~~~~
+          |                         void (*)(void)
+    /usr/include/signal.h:88:57: note: expected '__sighandler_t'
+        {aka 'void (*)(int)'} but argument is of type 'void (*)(void)'
+
+`segv_handler` is declared `static void segv_handler()`. Up to C17 an empty
+parameter list meant "unspecified", and the conversion to `__sighandler_t` went
+through with at most a warning. C23 redefined it as `(void)`, and GCC 15 made
+C23 the default. Nothing about the handler changed; the language under it did.
+
+The project sets no `CMAKE_C_STANDARD`, so the C sources take whatever the
+compiler defaults to — which is exactly how this arrives unannounced.
+
+### Technical effect
+
+The handler takes its `int`. Unused, as before, but the type now matches.
+
+### Risk
+
+None worth naming. `mape` is Linux-only (it needs GTK3), which is why neither
+the macOS nor the Windows machine could have found this.
+
+Same shape as [3](#3-a0d7e62cf--gzioc-did-not-compile-on-modern-clang): an old C
+source that only ever compiled by the grace of a lenient default, breaking the
+moment a current toolchain is pointed at it. Expect more of these, and expect
+them in C rather than C++.
+
+---
+
+## 21. `0ce1ea716` — the `groups` target raced against itself on Makefiles
+
+**Files:** `CMakeLists.txt`
+
+### Motivation
+
+`cmake --build build --target groups --parallel N` fails on a Makefile
+generator:
+
+    Status:
+    Pack failed
+    make[3]: *** [CMakeFiles/groups.dir/build.make:115: Objects.ocd] Error 1
+    make[3]: *** Deleting file 'Objects.ocd'
+
+Intermittently, and by preference on `Objects.ocd` — at 29 MB the largest
+group, so the one still running when the others start.
+
+The custom command already carried the property meant to prevent this:
+
+```cmake
+USES_TERMINAL # Hack: prevent parallel execution (for ninja), c4group tends to fail otherwise
+```
+
+`USES_TERMINAL` puts a Ninja job in the console pool, which takes one job at a
+time. Makefiles ignore the property entirely. So the protection existed only on
+the generator that upstream's authors happened to use, and the comment says as
+much without drawing the conclusion.
+
+Why concurrent `c4group` is unsafe at all: `MakeTempFilename()`
+(`src/platform/StdFile.cpp:320`) scans for the lowest unused `<name>.NNN` and
+returns it **without claiming it** —
+
+```cpp
+do { cnum++; osprintf(fn_ext,"%03d",cnum); }
+while (FileExists(szFilename) && (cnum<999));
+```
+
+— so two processes in the same directory pick the same temporary file. A
+textbook check-then-use gap, in a function that has no way to report one.
+
+The failure mode is the interesting part. It leaves a complete-looking eleven
+groups of twelve behind, and the engine reports it much later as
+
+    FATAL ERROR: Required object file Objects.ocd not available.
+
+which reads like a staging mistake rather than a packing one.
+
+### Technical effect
+
+Each group's `OUTPUT` gains a dependency on the previous group's output, so the
+twelve pack in sequence under any generator. `USES_TERMINAL` stays: it is
+harmless, and it keeps Ninja's output readable.
+
+The Apple `POST_BUILD` path is untouched — commands attached to a target already
+run in order.
+
+### Risk
+
+Low. Packing all twelve groups takes about six seconds; it was already serial on
+Ninja and on macOS, so the only configuration that loses parallelism is the one
+that was producing wrong results with it.
+
+Not fixed at the source — see
+[ADR-019](decisions.md#adr-019--serialise-the-groups-target-rather-than-repair-maketempfilename).
+
+---
+
+## 22. `3207274f2` — a system gtest include path outlived being given the sources
+
+**Files:** `tests/CMakeLists.txt`
+
+### Motivation
+
+`find_path(GTEST_INCLUDE_DIR)` and its GMock counterpart ran unconditionally, so
+a configure that found no googletest *sources* still cached the system headers.
+That is `/usr/include` on any machine with a googletest package installed —
+gtest 1.17 on Arch.
+
+It is also the configure CLAUDE.md tells you to run first, without
+`GTEST_ROOT`. `find_path` never revisits a cached value, so adding
+`-DGTEST_ROOT=` to that same build directory afterwards changes the *sources*
+and leaves the *headers* where they were. `gtest-all.cc` 1.10.0 then compiles
+against gtest 1.17 headers:
+
+    gtest.cc:5950: error: 'kDeathTestStyleFlag' was not declared in this scope
+    gtest-port.cc:737: error: 'StrDup' is not a member of 'testing::internal::posix'
+    gtest-port.cc:1289: error: 'Int32' has not been declared
+
+Nothing in a page of those points at the include path, the configure cheerfully
+reports GTest as found, and deleting the build directory is the only cure.
+
+Latent everywhere, invisible on the two machines that met it first: Homebrew's
+`googletest` was never installed on the macOS one, and vcpkg does not put
+headers on a default search path.
+
+### Technical effect
+
+The `find_file` for the sources moves above the `find_path` for the headers, and
+the header search is guarded by it. The headers can now only come from the tree
+the sources came from. The source search already had `NO_DEFAULT_PATH`, so its
+own result was never at risk.
+
+### Risk
+
+Low, and it narrows rather than widens. A layout that splits sources from
+headers — Debian's old `/usr/src/gmock` with headers in `/usr/include` — still
+resolves, because `GMOCK_ROOT` is found first and the system path is still
+reachable from the guarded search.
+
+---
+
+## 23. `8722c249b`, `753b74a59` — googletest 1.10.0 stopped compiling
+
+**Files:** `tests/TestLog.h`, `tests/aul/ErrorHandler.h`,
+`.github/workflows/build.yml`
+
+### Motivation
+
+googletest 1.10.0 does not build on GCC 15 or later. `gtest-death-test.cc` and
+`gtest-port.cc` use `uintptr_t` and `Int32` without including `<cstdint>`, and
+the compiler stopped supplying it transitively:
+
+    gtest-death-test.cc:1385:26: error: 'uintptr_t' does not name a type
+
+Not fixable in this repository — it is the dependency's source. The way out is a
+newer googletest, and the pin was load-bearing in both directions: the tests
+used `MOCK_METHOD1`/`MOCK_METHOD2`, removed in 1.13.0, while
+`CMAKE_CXX_STANDARD 14` with `STANDARD_REQUIRED ON` rules out 1.15+, which wants
+C++17. 1.10.0 was the only version satisfying both, and it had just stopped
+working.
+
+### Technical effect
+
+The nine mocks move to the variadic `MOCK_METHOD`, which **already exists in
+1.10.0** (`gmock-function-mocker.h:42`). So this is a widening, not a bump:
+every version from 1.10.0 to 1.14.0 now works, and no other machine has to move
+in step. CI's `GTEST_VERSION` goes to 1.14.0, the newest release still inside
+the C++14 bound.
+
+All seven `TestLog` methods and both `C4AulErrorHandler` methods are pure
+virtual in their bases, so the new form also carries `(override)` — which the
+arity macros could not express, and without which a signature drifting away from
+the base would quietly produce a new function instead of a failed build.
+
+One detail the version bump needs: the tag naming changes at 1.11, from
+`release-1.10.0` to `v1.14.0`, and the extracted directory follows the tag.
+
+### Risk
+
+Low for the mocks — the macro is older than the pin, so the change is
+compatible in both directions. The CI bump is the part that moves: 1.14.0 has
+never run on `ubuntu-latest` or the macOS runner here, only locally on GCC 16,
+where all 72 pass.
+
+---
+
 ## Not addressed
 
 Known, deliberately left alone:
@@ -891,10 +1087,15 @@ there — for **74 of 74**. Note the different layout: the test binaries land in
 `build\tests\<Config>\`, since `oc_set_target_names()` only redirects the four
 shipped executables.
 
-Version choice is constrained from both sides: the tests use the arity-based
-`MOCK_METHOD1`/`MOCK_METHOD2` macros that later googletest releases dropped,
-and `CMAKE_CXX_STANDARD 14` with `STANDARD_REQUIRED ON` rules out 1.15+.
-1.10.0 sits in the remaining window.
+All three also build and pass on Linux/GCC 16 — **72 of 72**, the same set as
+macOS.
+
+Version choice is constrained from both sides, and the lower bound moved. It
+used to be the arity-based `MOCK_METHOD1`/`MOCK_METHOD2` macros, dropped by
+later googletest releases; since `8722c249b` it is the toolchain, because
+1.10.0 itself no longer compiles on GCC 15 or later. The upper bound is
+unchanged: `CMAKE_CXX_STANDARD 14` with `STANDARD_REQUIRED ON` rules out 1.15+.
+**1.14.0** sits in the remaining window. See [23](#23-8722c249b-753b74a59--googletest-1100-stopped-compiling).
 
 What this does and does not buy: the suites cover `libmisc` and `libc4script`,
 not the macOS platform layer where most of the fixes live. The exception is the

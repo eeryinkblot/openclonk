@@ -18,7 +18,7 @@ went into things that looked verified and were not.
 | Platform | `C4GROUP_TOOL_ONLY` | `HEADLESS_ONLY` | Full build | GUI actually launched |
 | --- | --- | --- | --- | --- |
 | macOS arm64 | verified here | verified here + CI | verified here + CI | **yes**, played |
-| Linux x86_64 | derived | verified in CI | derived | no |
+| Linux x86_64 | derived | verified here + CI | **verified here** | **yes**, launched |
 | Windows x64 | verified in CI | **verified here** | **verified here** | **yes**, launched |
 
 Everything in the "derived" column is an open question, not a formality. On
@@ -76,33 +76,161 @@ Known-good log lines to check against: `GL 4.1 Metal - … on Apple M1 Pro`,
 
 ## Linux x86_64
 
-**Verified in CI** for `HEADLESS_ONLY` on `ubuntu-latest`, including unit tests,
-packing all 13 groups and running a scenario. Everything else is open.
+**Verified here** on EndeavourOS / Arch, kernel 7.1.8, up to and including a
+launched and playing `openclonk` — headless, unit tests, packing, a scenario
+run, and the full GL client. The toolchain is far ahead of what CI uses:
+**GCC 16.2.1 and CMake 4.4.2**, against `ubuntu-latest`'s conservative pair.
+
+Also **verified in CI** for `HEADLESS_ONLY` on `ubuntu-latest`.
 
 ```sh
-sudo apt-get install -y --no-install-recommends \
-  libpng-dev libjpeg-dev libfreetype-dev zlib1g-dev \
-  libcurl4-openssl-dev libminiupnpc-dev
+# Arch package names. All were already installed here except the two below.
+sudo pacman -S --needed base-devel cmake libpng libjpeg-turbo freetype2 zlib \
+                        curl libepoxy openal libogg libvorbis sdl2-compat \
+                        qt5-base glu mesa
+sudo pacman -S --needed freealut miniupnpc      # see "audio and UPnP" below
 
 cmake -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo -DHEADLESS_ONLY=ON .
 cmake --build build --parallel "$(getconf _NPROCESSORS_ONLN)"
+
+cmake -B build-gui -DCMAKE_BUILD_TYPE=RelWithDebInfo -DHEADLESS_ONLY=OFF .
+cmake --build build-gui --parallel "$(getconf _NPROCESSORS_ONLN)"
 ```
 
-On Arch/EndeavourOS the package names differ (`libpng`, `libjpeg-turbo`,
-`freetype2`, `zlib`, `curl`, `miniupnpc`) — **derived**, not tried.
+No `CMAKE_PREFIX_PATH` is needed — nothing is keg-only the way Homebrew's
+openal-soft is, and `pkg_check_modules` finds every audio component directly.
 
-### What this machine can do that CI cannot
+### What the modern toolchain cost
 
-- **Run the GUI.** `HEADLESS_ONLY=OFF` on Linux is completely untested in this
-  fork; the runner has no display. That covers mouse input and sound, which is
-  where three of the eight macOS defects were. Needs epoxy, OpenAL, freealut,
-  Ogg/Vorbis and SDL2 on top of the list above — **derived** from the macOS
-  requirements, since `FindAudio` and the windowing code branch differently
-  there (`USE_SDL_MAINLOOP` instead of `USE_COCOA`).
-- **A much newer toolchain.** Arch carries current GCC and glibc where
-  `ubuntu-latest` is conservative. That matters: `gzio.c` broke on modern clang
-  for exactly this reason (see divergence.md 3), and a newer GCC is a good
-  canary for the next such case.
+The engine itself needed **no source change**, as on Windows. GCC 16 compiles
+all of `libmisc`, `libc4script`, `libopenclonk`, `openclonk` and
+`openclonk-server` with warnings only. Three things did break, none of them in
+the engine:
+
+- **`mape` does not compile.** `segv_handler()` is declared with an empty
+  parameter list, which in C23 — GCC 15 and later default to it — means
+  `(void)` rather than "unspecified", so it no longer converts to
+  `__sighandler_t` and the `signal()` call is a hard error rather than a
+  warning. Fixed by giving the handler its `int`. This is the `gzio.c` pattern
+  from divergence.md 3 repeating: an old C source that only ever compiled by
+  the grace of a lenient default.
+- **googletest 1.10.0 does not compile.** `gtest-death-test.cc` and
+  `gtest-port.cc` use `uintptr_t` and `Int32` without including `<cstdint>`,
+  which GCC 15 stopped supplying transitively. Not fixable in this repository;
+  the pin moved to **1.14.0**, the newest release that still builds under
+  `CMAKE_CXX_STANDARD 14` (1.15+ wants C++17). The nine `MOCK_METHOD1`/`2`
+  uses in `tests/` were rewritten to the variadic `MOCK_METHOD`, which exists
+  in 1.10.0 as well, so no other machine has to move in lockstep.
+- **`cmake --build --target groups --parallel N` fails intermittently.** See
+  the trap below; fixed in `CMakeLists.txt`.
+
+### Audio and UPnP need two extra packages
+
+`freealut` and `miniupnpc` are the only dependencies not pulled in by something
+else here. Without them the configure is **silent about audio in the way that
+matters**: it prints `Package 'freealut' not found` among a hundred other
+lines and then `Not enabling audio output.`, and the build succeeds. The
+running engine says `Music not available.` / `Error at sound file.` and plays
+nothing at all. `FindAudio` requires OpenAL *and* ALUT *and* Ogg/Vorbis
+together; two out of three is the same as none.
+
+`miniupnpc` is optional in a different sense — without it
+`C4Network2UPnPDummy.cpp` is compiled in place of `C4Network2UPnPLinux.cpp` and
+port forwarding silently does nothing.
+
+### Runtime paths, and the config trap
+
+| What | Where |
+| --- | --- |
+| Log | `~/.clonk/openclonk/OpenClonk.log`, and stdout as well |
+| Config | `~/.clonk/openclonk/config` — a plain file, unlike Windows |
+
+The `Sound=0` trap is here too, and was confirmed rather than assumed: one
+headless run wrote `Sound`, `Music`, `MenuMusic` and `MenuSound` to `0` in
+`[Sound]`, permanently. Also set `[Graphics] Windowed=1` before the first GUI
+run unless you want the engine to take the display.
+
+Known-good log lines to check against:
+
+    GL 4.6 (Core Profile) Mesa 26.1.7-arch1.1 on AMD Radeon RX 9070 XT (radeonsi, gfx1201, ACO, DRM 3.64) (AMD)
+    C4AulScriptEngine linked - 90857 lines, 0 warnings, 0 errors
+
+The client runs under a Wayland session (KDE, `XDG_SESSION_TYPE=wayland`)
+through SDL2 — `sdl2-compat` here, not the original SDL2 — and renders a full
+game at GL 4.6 Core.
+
+### The Qt editor builds here too
+
+Arch still ships `qt5-base` (5.15.19), so `WITH_QT_EDITOR` turns itself on and
+all 17 sources in `src/editor/` compile, with `libQt5Widgets`, `libQt5Gui` and
+`libQt5Core` linked into `openclonk`. That makes Linux the **second** platform
+where the editor exists at all, after Windows — and the first non-Windows one,
+which is what issue #22 was really about. The editor has **not** been started
+here yet; only the build is verified.
+
+Note the consequence recorded in the Windows section: enabling the editor drops
+`C4ConsoleWin32.cpp` — and its non-Qt equivalents — from the build, so the two
+configurations cover different code and neither is a superset.
+
+### Unit tests — verified here
+
+**72 of 72 pass**, the same set as macOS. Sources unpacked at
+`/home/eeryinkblot/projects/deps/googletest-1.14.0`.
+
+```sh
+GT=/home/eeryinkblot/projects/deps/googletest-1.14.0
+cmake -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo -DHEADLESS_ONLY=ON \
+    -DGTEST_ROOT=$GT/googletest -DGMOCK_ROOT=$GT/googlemock .
+cmake --build build --target tests aul_test StdMeshMath --parallel 24
+./build/tests/tests        # 15
+./build/tests/aul_test     # 52
+./build/tests/StdMeshMath  #  5
+```
+
+### Scenario run — verified here
+
+Identical to the other two platforms, **including the failure**: `Movement.ocs`
+reports 3 tests, 1 failed, 0 skipped, and the failing one is test 3, the rock
+position of issue #35. Linux puts the rock at `[372, 157]` where the assertion
+wants X > 380 — so it is not a platform disagreement, it is an assertion no
+platform satisfies.
+
+### Traps paid for here
+
+- **The `groups` target is not parallel-safe, and only Ninja was protected.**
+  `cmake --build build --target groups --parallel 24` fails with `Pack failed`,
+  intermittently, and by preference on `Objects.ocd` — the largest group, and
+  therefore the one still running when the others start. The `USES_TERMINAL`
+  on the custom command was the whole defence and it only does anything for
+  Ninja, whose console pool takes one job at a time; Makefiles ignore it. The
+  failure is loud in the log but easy to miss in a long build, and what it
+  leaves behind is a *complete-looking* set of eleven groups out of twelve. The
+  engine then dies at
+  `FATAL ERROR: Required object file Objects.ocd not available.` — which reads
+  like a staging mistake, not a packing one.
+
+  The root cause is `MakeTempFilename()` (`src/platform/StdFile.cpp:320`): it
+  scans for the lowest unused `<name>.NNN` and returns it **without claiming
+  it**, so two c4group processes in the same directory pick the same temporary
+  file. Fixed in `CMakeLists.txt` by chaining each group onto the previous one,
+  which serialises packing under every generator. Why not at the source: see
+  decisions.md.
+
+- **A stale `GTEST_INCLUDE_DIR` survives being given the sources later.** On any
+  machine with a googletest *package* installed — Arch has `gtest` 1.17 in
+  `/usr/include` — the first configure, the one CLAUDE.md tells you to run
+  without `GTEST_ROOT`, finds no sources but still caches the system headers.
+  `find_path` never revisits a cached value, so adding `-DGTEST_ROOT=` to that
+  same build directory afterwards changes the *sources* and leaves the
+  *headers* pointing at the installed copy. gtest-all.cc 1.10.0 then compiles
+  against gtest 1.17 headers and dies on a page of names that no longer exist —
+  `Int32`, `StrDup`, `kDeathTestStyleFlag` — with nothing in the output
+  connecting it to the include path. Deleting the build directory is the only
+  cure. `tests/CMakeLists.txt` now looks for the headers only once the sources
+  have turned up, and only where they are.
+
+- **`ln -sf ../<name>` for staging is fine here**, unlike Windows: the
+  `build/planet` symlink farm the CI uses works unprivileged.
 
 ---
 
