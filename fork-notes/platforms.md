@@ -173,7 +173,31 @@ row, so the advice that works on Windows — junction `Music.ocg` next to the
 binary — is a no-op on Linux, and an uninstalled build tree can never have
 music no matter how it is staged.
 
-Installing into a prefix you own is the way to get it, and it works:
+**The cheap way out is `WITH_AUTOMATIC_UPDATE=ON`**, which moves Linux to the
+third row of that table — `SystemDataPath` becomes `ExePath`, and music can then
+be staged next to the binary exactly as on Windows. That is what the option is
+*for*: it marks the tarball and development-snapshot layout, where the game data
+sits with the executable. Verified here:
+
+```sh
+cmake -B build-play -DCMAKE_BUILD_TYPE=RelWithDebInfo -DHEADLESS_ONLY=OFF \
+    -DWITH_AUTOMATIC_UPDATE=ON .
+cmake --build build-play --parallel 24
+mkdir -p build-play/planet
+for f in build/*.oc*; do ln -sf "$PWD/$f" "build-play/planet/$(basename "$f")"; done
+ln -sfn "$PWD/planet/Music.ocg" build-play/Music.ocg
+./build-play/openclonk
+```
+
+    SystemDataPath: "/home/eeryinkblot/projects/openclonk/build-play/"
+    Music: UrbanBolero.ogg
+
+Note what it costs: `C4UpdateDlg.cpp` joins the build, `install` is deliberately
+blocked in that configuration (`CMakeLists.txt:1522-1530`), and the engine is
+then willing to look for updates. Fine for a machine you play on, wrong for
+anything you would ship.
+
+Installing into a prefix you own is the other way, and it works too:
 
 ```sh
 cmake -B build-install -DCMAKE_BUILD_TYPE=RelWithDebInfo -DHEADLESS_ONLY=OFF \
@@ -212,6 +236,37 @@ Known-good log lines to check against:
 The client runs under a Wayland session (KDE, `XDG_SESSION_TYPE=wayland`)
 through SDL2 — `sdl2-compat` here, not the original SDL2 — and renders a full
 game at GL 4.6 Core.
+
+### How to tell whether there is actually sound
+
+The log is not enough. `OpenAL extensions loaded.` says the toolkit came up,
+`Music: <file>` says a song was handed to it — neither says a sample reached a
+speaker. Record the sink's monitor and measure it:
+
+```sh
+SINK=$(pactl info | sed -n 's/^Default Sink: //p')
+timeout 30 parec --device=$SINK.monitor --file-format=wav cap.wav
+ffmpeg -hide_banner -i cap.wav -af volumedetect -f null - 2>&1 | grep volume
+```
+
+Reference points measured here, all on the same sink:
+
+| What | mean | max |
+| --- | --- | --- |
+| Nothing running | −91.0 dB | −91.0 dB |
+| Installed tree, main menu, music on | −23.8 dB | −10.9 dB |
+| `build-play`, main menu, music on | −25.9 dB | −9.5 dB |
+| `build-gui`, `Movement.ocs`, **music off** | −47.1 dB | −6.3 dB |
+
+Silence is −91, not −inf, so that is the number to compare against. The third
+row is the one that matters for sound *effects*: music was switched off in the
+config, so nothing but the effect path could have produced it.
+
+**Start recording before the engine, not after.** Two captures here read −91.0
+and nearly produced a "sound effects are dead on Linux" conclusion; both had
+started at t+16 s. A scenario with a clonk standing still makes no noise
+whatsoever, and `Movement.ocs` fires everything it has in the first twelve
+seconds.
 
 ### One segfault, seen once and not reproduced
 

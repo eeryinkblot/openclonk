@@ -159,7 +159,22 @@ binary does nothing.** `C4MusicSystem` looks it up under `SystemDataPath`, which
 the way it is on macOS and Windows. An uninstalled build tree therefore has no music,
 and says so: `Music File not found: /usr/local/share/games/openclonk/Music.ocg`.
 
-To hear music, install into a prefix you own and run from there:
+To hear music while still playing out of the build tree, configure with
+`WITH_AUTOMATIC_UPDATE=ON` — that alone makes `SystemDataPath` the executable's
+directory, the way it already is on Windows:
+
+```sh
+cmake -B build-play -DCMAKE_BUILD_TYPE=RelWithDebInfo -DHEADLESS_ONLY=OFF \
+    -DWITH_AUTOMATIC_UPDATE=ON .
+cmake --build build-play --parallel 24
+mkdir -p build-play/planet
+for f in build/*.oc*; do ln -sf "$PWD/$f" "build-play/planet/$(basename "$f")"; done
+ln -sfn "$PWD/planet/Music.ocg" build-play/Music.ocg
+./build-play/openclonk                       # logs "Music: UrbanBolero.ogg"
+```
+
+It also pulls `C4UpdateDlg.cpp` into the build and blocks `install`, so it is a
+configuration to play in, not to ship. The alternative is a real install:
 
 ```sh
 cmake -B build-install -DCMAKE_BUILD_TYPE=RelWithDebInfo -DHEADLESS_ONLY=OFF \
@@ -173,6 +188,20 @@ cmake --install build-install
 `--config=<file>` gives a run its own config, and the `UserDataPath` key inside that
 file moves the log and player data with it — useful for a throwaway run that must not
 disturb an existing `~/.clonk`.
+
+**To check that audio is actually audible, measure it — the log cannot tell you.**
+`OpenAL extensions loaded.` only means the toolkit started:
+
+```sh
+SINK=$(pactl info | sed -n 's/^Default Sink: //p')
+timeout 30 parec --device=$SINK.monitor --file-format=wav cap.wav
+ffmpeg -hide_banner -i cap.wav -af volumedetect -f null - 2>&1 | grep volume
+```
+
+Silence reads −91 dB, not −inf. The main menu with music is around −24 dB mean.
+**Start the recording before the engine**: a scenario left alone makes no sound at
+all, and measuring from t+16 s produces a convincing −91 dB on a perfectly working
+build. See `fork-notes/platforms.md` for the reference table.
 
 ### Building on Windows (x64 / MSVC)
 
