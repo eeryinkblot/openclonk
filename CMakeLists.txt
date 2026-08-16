@@ -1634,10 +1634,24 @@ if(NOT C4GROUP_TOOL_ONLY)
 				OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/${group}
 				COMMAND "${CMAKE_COMMAND}" ARGS -E env "$<TARGET_FILE:${native_c4group}>" "${CMAKE_CURRENT_SOURCE_DIR}/planet/${group}" -t "${CMAKE_CURRENT_BINARY_DIR}/${group}"
 				MAIN_DEPENDENCY ${CMAKE_CURRENT_SOURCE_DIR}/planet/${group}
-				DEPENDS "${native_c4group}"
+				DEPENDS "${native_c4group}" ${oc_previous_group}
 				VERBATIM
 				USES_TERMINAL # Hack: prevent parallel execution (for ninja), c4group tends to fail otherwise
 			)
+			# Chain each group onto the one before it, so that no two c4group
+			# processes ever run at once. USES_TERMINAL above was the only defence
+			# and it works for Ninja alone, whose console pool takes one job at a
+			# time. Makefiles ignore it, so `cmake --build --target groups
+			# --parallel N` packs several groups simultaneously and one of them
+			# dies with "Pack failed" -- intermittently, and by preference on the
+			# largest group, which is the one still running when the others start.
+			#
+			# What makes concurrent c4group unsafe is MakeTempFilename()
+			# (src/platform/StdFile.cpp:320): it scans for the lowest unused
+			# <name>.NNN and hands it back without claiming it, so two processes
+			# working in the same directory choose the same temporary file. Why
+			# that is not fixed at the source instead: fork-notes/decisions.md.
+			set(oc_previous_group "${CMAKE_CURRENT_BINARY_DIR}/${group}")
 			install(FILES ${CMAKE_CURRENT_BINARY_DIR}/${group} DESTINATION share/games/openclonk)
 		endif()
 	endforeach()
