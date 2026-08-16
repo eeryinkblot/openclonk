@@ -25,26 +25,32 @@ find_path(GMOCK_ROOT
     NAMES "gmock-all.cc" "src/gmock-all.cc" "gmock/gmock-all.cc"
     PATHS "/usr/src/gmock"
     )
-find_path(GMOCK_INCLUDE_DIR
-    NAMES "gmock/gmock.h"
-    HINTS "${GMOCK_ROOT}"
-    PATH_SUFFIXES "include"
-    )
 find_file(GMOCK_SOURCE_ALL
     NAMES "gmock-all.cc"
     HINTS "${GMOCK_ROOT}"
     PATH_SUFFIXES "src" "gtest"
     NO_DEFAULT_PATH
     )
+# Only look for the headers once the sources have turned up, and only where they
+# are. Searching unconditionally caches a system include directory on the very
+# first configure -- the one CLAUDE.md tells you to run, without GMOCK_ROOT --
+# on every machine that has a googletest package installed, /usr/include on
+# Arch. find_path does not revisit a cached value, so passing GMOCK_ROOT
+# afterwards changes the sources and leaves the headers pointing at the
+# installed copy. gmock-all.cc 1.10.0 then compiles against gmock 1.17 headers
+# and fails on names that no longer exist. Nothing in the output connects the
+# two, and deleting the build directory is the only cure.
+if (GMOCK_SOURCE_ALL)
+    find_path(GMOCK_INCLUDE_DIR
+        NAMES "gmock/gmock.h"
+        HINTS "${GMOCK_ROOT}"
+        PATH_SUFFIXES "include"
+        )
+endif()
 
 find_path(GTEST_ROOT
     NAMES "src/gtest-all.cc" "gtest/gtest-all.cc"
     PATHS "${GMOCK_ROOT}" "/usr/src/gtest"
-    )
-find_path(GTEST_INCLUDE_DIR
-    NAMES "gtest/gtest.h"
-    HINTS "${GTEST_ROOT}"
-    PATH_SUFFIXES "include"
     )
 find_file(GTEST_SOURCE_ALL
     NAMES "gtest-all.cc"
@@ -52,6 +58,15 @@ find_file(GTEST_SOURCE_ALL
     PATH_SUFFIXES "src" "gtest"
     NO_DEFAULT_PATH
     )
+# Same as for GMock above: the headers have to come from the tree the sources
+# came from, and must not be cached before that tree is known.
+if (GTEST_SOURCE_ALL)
+    find_path(GTEST_INCLUDE_DIR
+        NAMES "gtest/gtest.h"
+        HINTS "${GTEST_ROOT}"
+        PATH_SUFFIXES "include"
+        )
+endif()
 
 if (GMOCK_SOURCE_ALL AND GMOCK_INCLUDE_DIR)
     add_library(gmock STATIC
