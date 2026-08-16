@@ -129,6 +129,36 @@ the engine:
 - **`cmake --build --target groups --parallel N` fails intermittently.** See
   the trap below; fixed in `CMakeLists.txt`.
 
+### What the modern toolchain found without breaking anything
+
+The more valuable half, and the reason this machine is worth keeping. None of
+these stops a build; all of them are things older compilers never said, and none
+had been looked at before. Filed rather than fixed, because each needs a
+judgement this fork has no test to support.
+
+| Finding | Where | Issue |
+| --- | --- | --- |
+| Pointer to a block-scoped buffer used after the block ends | `C4Group.cpp:1598-1609` | #41 |
+| `C4Config`/`C4ConfigNetwork` have two layouts in one binary | `C4Config.h:165` | #42 |
+| `free()` on a stack buffer, three call sites | `StdBuf.h:192` | #43 |
+| One byte written before a buffer | `C4MusicSystem.cpp:212` | #43 |
+| `memcpy` with a bound of `SIZE_MAX` | `StdBuf.h:156` | #43 |
+| Four uninitialised locals in `C4Object::ExecAction` | `C4ObjectAction.cpp:957` | #43 |
+| `cmake_minimum_required(3.5.1)`, one release from removal | `CMakeLists.txt:14` | #44 |
+
+Two of them are worth singling out. The `C4Group` one is a genuine use of a
+buffer after its scope ends, on the path every `groups` build takes — and #33
+already notes that nothing tests `C4Group`. The `C4ObjectAction` one is
+uninitialised reads in *game logic*, which on a lockstep-synchronised engine is
+a desync source rather than a mere crash risk (#34).
+
+**Two conditions had to hold before any of this was visible**, which is worth
+remembering when reading a clean build elsewhere: LTO, which is what lets GCC
+compare types across translation units at all — `CheckIPOSupported` turns it on
+at `CMakeLists.txt:97-101` — and, for #42, `WITH_AUTOMATIC_UPDATE=ON`, since the
+ODR mismatch is between the two sides of an `#ifdef`. The default build reports
+zero `-Wodr` warnings; the snapshot configuration reports eighteen.
+
 ### Audio — verified here
 
 `freealut` and `miniupnpc` are the only dependencies nothing else pulls in, and
