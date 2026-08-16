@@ -18,16 +18,26 @@ went into things that looked verified and were not.
 | Platform | `C4GROUP_TOOL_ONLY` | `HEADLESS_ONLY` | Full build | GUI actually launched |
 | --- | --- | --- | --- | --- |
 | macOS arm64 | verified here | verified here + CI | verified here + CI | **yes**, played |
-| Linux x86_64 | derived | verified here + CI | **verified here** | **yes**, launched |
+| Linux x86_64 | **verified here** | verified here + CI | **verified here** | **yes**, launched |
 | Windows x64 | verified in CI | **verified here** | **verified here** | **yes**, launched |
 
-Everything in the "derived" column is an open question, not a formality. On
-macOS the full build took eight fixes to reach; there is no reason to expect the
-untried combinations to be free.
+**No cell in that table is "derived" any more.** Every configuration has been
+run on the machine it claims, and the engine launches on all three. Reaching it
+took eight fixes on macOS, one `CMakeLists.txt` fix on Windows and no source
+change, and four fixes on Linux — none of them in the engine either.
 
-Windows was the cheap one, against expectation: one `CMakeLists.txt` fix and no
-source change at all. See the Windows section for what that does and does not
-prove.
+What it does *not* mean, since the table is easy to over-read:
+
+- **The Qt editor is built and run on two of the three.** macOS has no Qt5 from
+  Homebrew, so `src/editor/` is compiled by nothing there (#22).
+- **`mape` is built on one and run on none.** It needs GTK3, so it does not
+  exist on macOS or Windows, and no CI job compiles it (#39).
+- **CI covers less than the machines do.** `HEADLESS_ONLY` on two runners,
+  `C4GROUP_TOOL_ONLY` on Windows, no display anywhere. Everything else in this
+  table is one machine, by hand, once.
+- **A configuration that builds is not a configuration that is exercised.** See
+  the `C4GROUP_TOOL_ONLY` note below, where Linux succeeds by accident of where
+  its headers live.
 
 ---
 
@@ -128,6 +138,34 @@ the engine:
   in 1.10.0 as well, so no other machine has to move in lockstep.
 - **`cmake --build --target groups --parallel N` fails intermittently.** See
   the trap below; fixed in `CMakeLists.txt`.
+
+### `C4GROUP_TOOL_ONLY` — verified here, and it hides #19
+
+```sh
+cmake -B build-tool -DCMAKE_BUILD_TYPE=RelWithDebInfo -DC4GROUP_TOOL_ONLY=ON .
+cmake --build build-tool --target c4group --parallel 24
+```
+
+`c4group` builds and works — it packed `System.ocg` to 124544 bytes, the same
+size the full build produces.
+
+The interesting part is the **default target**, which is what #19 is about:
+`C4GROUP_TOOL_ONLY` still defines `libc4script` and `libopenclonk`, so `all`
+compiles sources needing PNG and JPEG that the configuration never looked for.
+On Windows that fails. **Here it succeeds** — `cmake --build build-tool` exits
+0 and builds seven targets:
+
+    blake2  c4group  c4script  libc4script  libmisc  libopenclonk
+    oc-licenses-into-code
+
+`PNG_LIBRARY` and `JPEG_INCLUDE_DIR` are absent from `CMakeCache.txt`, so CMake
+genuinely never searched — and `StdPNG.cpp.o` compiled anyway, because
+`/usr/include/png.h` is on the compiler's default search path on a Linux system.
+
+So the defect is present and asymptomatic. That is worse than a failure, not
+better: the option claims to build only `c4group` and quietly builds six more
+targets, and the platform where that is obvious is the one nobody uses to check
+build options.
 
 ### What the modern toolchain found without breaking anything
 
