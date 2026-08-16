@@ -11,7 +11,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  GTEST_VERSION: "1.10.0"
+  GTEST_VERSION: "1.14.0"
 
 jobs:
   headless:
@@ -54,18 +54,25 @@ jobs:
 
       # CMake compiles gtest/gmock into the project, so it needs their sources.
       # A packaged googletest only ships headers and libraries and will not do.
-      # The version is pinned from both ends: the tests use the arity-based
-      # MOCK_METHOD1/2 macros dropped in later releases, and the project is
-      # CMAKE_CXX_STANDARD 14 with STANDARD_REQUIRED ON, which rules out 1.15+.
+      # The version is pinned from both ends. The lower bound is the toolchain:
+      # 1.10.0, which this used to pin, has no #include <cstdint> in
+      # gtest-death-test.cc and gtest-port.cc, and GCC 15 and later no longer
+      # drag it in by accident, so the whole library fails to compile on a
+      # current distribution. The upper bound is the project:
+      # CMAKE_CXX_STANDARD 14 with STANDARD_REQUIRED ON rules out 1.15+, which
+      # wants C++17. 1.14.0 is the newest release inside both.
+      #
+      # The tag naming changed at 1.9: up to 1.10.0 it is release-<v>, from
+      # 1.11.0 on it is v<v>, and the extracted directory follows the tag.
       - name: Fetch googletest sources
         run: |
           curl -sSL -o gtest.tar.gz \
-            "https://github.com/google/googletest/archive/refs/tags/release-${GTEST_VERSION}.tar.gz"
+            "https://github.com/google/googletest/archive/refs/tags/v${GTEST_VERSION}.tar.gz"
           tar xzf gtest.tar.gz
 
       - name: Configure
         run: |
-          GT="$PWD/googletest-release-${GTEST_VERSION}"
+          GT="$PWD/googletest-${GTEST_VERSION}"
           cmake -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo -DHEADLESS_ONLY=ON \
             -DGTEST_ROOT="$GT/googletest" -DGMOCK_ROOT="$GT/googlemock" . \
             | tee configure.log
