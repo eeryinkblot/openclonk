@@ -36,7 +36,11 @@ static const gchar* SEGV_MSG_ERR =
 	"with steps to reproduce and a possible file that caused the crash to "
 	"Armin Burgmeier <armin@arbur.net>";
 
-static void segv_handler()
+/* Must take the signal number: in C23, which GCC 15 and later default to, an
+ * empty parameter list means (void) rather than "unspecified", so a handler
+ * written as segv_handler() no longer converts to __sighandler_t and the call
+ * to signal() below is a hard error. */
+static void segv_handler(int sig)
 {
 	GtkWidget* error_dialog;
 	gboolean result;
