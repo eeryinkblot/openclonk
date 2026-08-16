@@ -139,10 +139,11 @@ known-good line as macOS and Windows:
     OpenAL extensions loaded. Available: AL_EFFECT_REVERB, AL_EFFECT_ECHO,
         AL_EFFECT_EQUALIZER. Unavailable: (none).
 
-Sound effects and music both play. Confirmed beyond the log: the process holds
-an uncorked `Stream/Output/Audio` node in PipeWire (`pw-cli ls Node`,
-`node.name = "openclonk"`), so this is audible output rather than a
-successfully initialised silence. `libopenal`, `libalut`, `libvorbisfile`,
+Sound effects and music both play, **confirmed by ear** on `build-play` and not
+only by instrument. The supporting evidence, in case it is ever needed without
+a person present: the process holds an uncorked `Stream/Output/Audio` node in
+PipeWire (`pw-cli ls Node`, `node.name = "openclonk"`), and the sink monitor
+measures well above the noise floor — see the reference table below. `libopenal`, `libalut`, `libvorbisfile`,
 `libvorbis` and `libogg` are all in `ldd build-gui/openclonk`.
 
 `miniupnpc` gets `C4Network2UPnPLinux.cpp` compiled in place of
