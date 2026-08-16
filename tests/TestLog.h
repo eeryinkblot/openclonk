@@ -49,11 +49,11 @@ private:
 class LogMock : public TestLog
 {
 public:
-	MOCK_METHOD1(Log, bool(const char*));
-	MOCK_METHOD1(DebugLog, bool(const char*));
-	MOCK_METHOD1(LogFatal, bool(const char*));
-	MOCK_METHOD1(LogSilent, bool(const char*));
-	MOCK_METHOD2(LogF, bool(const char*, va_list));
-	MOCK_METHOD2(DebugLogF, bool(const char*, va_list));
-	MOCK_METHOD2(LogSilentF, bool(const char*, va_list));
+	MOCK_METHOD(bool, Log, (const char*), (override));
+	MOCK_METHOD(bool, DebugLog, (const char*), (override));
+	MOCK_METHOD(bool, LogFatal, (const char*), (override));
+	MOCK_METHOD(bool, LogSilent, (const char*), (override));
+	MOCK_METHOD(bool, LogF, (const char*, va_list), (override));
+	MOCK_METHOD(bool, DebugLogF, (const char*, va_list), (override));
+	MOCK_METHOD(bool, LogSilentF, (const char*, va_list), (override));
 };

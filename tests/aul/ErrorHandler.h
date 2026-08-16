@@ -26,8 +26,8 @@ public:
 	{
 		::ScriptEngine.RegisterErrorHandler(this);
 	}
-	MOCK_METHOD1(OnError, void(const char*));
-	MOCK_METHOD1(OnWarning, void(const char*));
+	MOCK_METHOD(void, OnError, (const char*), (override));
+	MOCK_METHOD(void, OnWarning, (const char*), (override));
 };
 
 #endif
