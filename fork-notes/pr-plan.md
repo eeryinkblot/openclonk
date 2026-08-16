@@ -325,7 +325,7 @@ Consider splitting `6333d5498` off into its own PR; it is clean, while
 
 | Commits | Files |
 | --- | --- |
-| `4d1e0ba08`, `18a459494`, `a647ac445` | `CLAUDE.md` |
+| `4d1e0ba08`, `18a459494`, `660a1f8f1` | `CLAUDE.md` |
 | — | `fork-notes/` |
 
 Both files are fork-local by policy, so the `fork-notes/` row stays a blanket
