@@ -130,7 +130,17 @@ machine ever ticks. See [ADR-009](decisions.md#adr-009--hold-stdin-open-in-ci-in
   extending this job is now a matter of adding vcpkg packages and build time
   rather than an open question. Until that happens it is one machine, once.
 - **The Qt editor.** Qt5 is no longer available from Homebrew, so
-  `WITH_QT_EDITOR` is off everywhere and `src/editor/` is not compiled.
+  `WITH_QT_EDITOR` is off in CI and `src/editor/` is not compiled by any job.
+  It is built and run by hand on Windows and on Linux now (#22), so the gap is
+  regression coverage rather than "nobody knows whether it works".
+- **`mape`, anywhere.** Neither `mape` nor `gtk` appears in the workflow, and no
+  job installs GTK3, so `src/mape/` and `src/mapegen/` are compiled by nothing.
+  Not an academic gap: `83b23b4b6` fixed a hard compile error there that a
+  compiler upgrade introduced and no machine but one would ever have seen. #39.
+- **Packing under parallelism.** The pack step is
+  `cmake --build build --target groups` with no `--parallel`, so the race
+  `0ce1ea716` fixed cannot occur in CI and its fix cannot regress-fail. Removing
+  the chaining would leave the workflow green. #40.
 - **Actually running the GUI.** `macos-app` builds and inspects the bundle but
   never launches it; there is no display on the runner.
 - **Most of the fixes themselves.** The unit tests cover `libmisc` and
