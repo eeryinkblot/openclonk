@@ -44,7 +44,7 @@ neither macOS nor Windows.
 | Configure with `HEADLESS_ONLY=OFF` | — |
 | Assert Qt5 found, audio enabled, `Qt5Widgets_DIR` cached | A `find_package` failing quietly and removing a target, leaving a green job that compiled nothing new |
 | Build | — |
-| Build `mape` | The target vanishing when GTK3 or gtksourceview is absent |
+| Build `mape` | The target vanishing when GTK3 or gtksourceview is absent — a no-op otherwise, since `all` already builds it |
 | Assert ≥15 objects under `openclonk.dir/src/editor` and Qt5 in `ldd` | `src/editor/` being added to `OC_GUI_SOURCES`, so a successful link does not prove it was compiled |
 | Assert `ldd` shows epoxy, SDL2, OpenAL, ALUT, vorbisfile | A client that builds without the graphics or audio it exists for |
 
@@ -95,10 +95,10 @@ successful Windows build of this codebase in about five years. Two upstream
 defects had to be fixed to get there, both in configurations evidently never
 used on that platform: see sections 14 and 15 of [divergence.md](divergence.md).
 
-Typical runtimes: Linux headless ≈ 5.5 min, macOS headless ≈ 4.5 min, macOS app
-≈ 4 min, Windows ≈ 4 min. The Linux client job is new and its cost is not known
-yet — it builds roughly twice the translation units of the headless one, plus
-the editor and mape.
+Typical runtimes: Linux headless ≈ 5.5 min, **Linux client ≈ 5.5 min**, macOS
+headless ≈ 5.5 min, macOS app ≈ 6 min, Windows ≈ 1.5 min. The client job costs
+no more than the headless one despite building the editor and mape on top —
+the runner has more cores than the build has serial work.
 
 ## Why the checks are shaped like this
 
