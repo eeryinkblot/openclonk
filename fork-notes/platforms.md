@@ -82,9 +82,9 @@ tests, packing, a scenario run, the full GL client, and an installed tree. The
 toolchain is far ahead of what CI uses: **GCC 16.2.1 and CMake 4.4.2**, against
 `ubuntu-latest`'s conservative pair.
 
-Two things named in this file are still assumptions rather than results: UPnP
+One thing named in this file is still an assumption rather than a result: UPnP
 is verified as far as the right source file being compiled, not as a forwarded
-port, and the Qt editor is built but has never been started.
+port (#38).
 
 Also **verified in CI** for `HEADLESS_ONLY` on `ubuntu-latest`.
 
@@ -148,7 +148,8 @@ measures well above the noise floor — see the reference table below. `libopena
 
 `miniupnpc` gets `C4Network2UPnPLinux.cpp` compiled in place of
 `C4Network2UPnPDummy.cpp` — verified by the object file, **not** by forwarding
-a port.
+a port. No platform in this fork has ever exercised UPnP; see #38, and note
+that Windows builds a third implementation again (`C4Network2UPnPWin32.cpp`).
 
 What it looks like *without* them, since that is the state a fresh machine is
 in: the configure prints `Package 'freealut' not found` among a hundred other
@@ -285,25 +286,60 @@ drawing the startup dialog:
 backward-cpp caught it, which is itself a first for this fork — the handler has
 never fired on any platform before, and it works.
 
-**Not reproduced.** Five further runs of the same binary, three of them in the
-exact configuration that crashed (`Music.ocg` absent from an existing data
-directory), all reached the menu and stayed there. So it is intermittent, at
-roughly one in six, and no cause is claimed. Frame #0 lands on the line that is
-only a null *guard*, which under `RelWithDebInfo` usually means the real
-faulting instruction is nearby rather than exactly there.
+**Not reproduced.** Five further runs, all reached the menu and stayed. Roughly
+one in six. Frame #0 lands on the line that is only a null *guard*, which under
+`RelWithDebInfo` means the faulting instruction is in the inlined neighbourhood
+rather than exactly there — most plausibly the `pDraw->Blit(...)` below it.
 
-Do not read it as a Linux-specific defect on this evidence. `C4Facet::Draw` and
-the GUI container code are platform-independent, and no other platform has been
-started often enough to say whether they see it too.
+The middle of the trace is the useful part, and it was missed at first.
+`C4StartupMainDlg::OnShown` (`C4StartupMainDlg.cpp:344`) opens a **modal
+first-run player dialog** when the user path holds no `.ocp`:
 
-### The Qt editor builds here too
+```cpp
+if (!fHasPlayer)
+{
+    // no player created yet: Create one
+    GetScreen()->ShowModalDlg(pDlg=new C4StartupPlrPropertiesDlg(nullptr, nullptr), true);
+}
+```
+
+Everything below that frame is *that* dialog drawing itself through the nested
+scheduler loop `ShowModalDlg` runs — not the main menu. The crashing run used a
+`UserDataPath` with no player in it; the `Neuling.ocp` that directory holds now
+is stamped 22 minutes later.
+
+Which also suggests why an intermittent fault there could go unnoticed
+indefinitely: every developer machine has had a player file since its first
+launch, so the path runs once per user path ever created.
+
+Do not read it as Linux-specific on this evidence. `C4Facet`, the GUI containers
+and `C4StartupMainDlg` are all platform-independent. Filed as #37 with a
+reproduction recipe.
+
+### The Qt editor runs here — verified here
 
 Arch still ships `qt5-base` (5.15.19), so `WITH_QT_EDITOR` turns itself on and
 all 17 sources in `src/editor/` compile, with `libQt5Widgets`, `libQt5Gui` and
 `libQt5Core` linked into `openclonk`. That makes Linux the **second** platform
 where the editor exists at all, after Windows — and the first non-Windows one,
-which is what issue #22 was really about. The editor has **not** been started
-here yet; only the build is verified.
+which is what issue #22 was really about.
+
+It was started, and it works:
+
+```sh
+./build-play/openclonk --editor build-play/planet/Missions.ocf/DeadlyGrotto.ocs
+```
+
+Window titled `OpenClonk Editor`, and genuinely the Qt console rather than a
+successful link: properties dock with a live selection (`Object(307)`, a Gondor
+clonk, `KI-Auswahl` and `Skin` editable), the
+`Objektliste`/`Eigenschaften`/`Objekte erstellen` tabs, the play/pause/step and
+landscape-tool toolbars, a log dock mirroring the engine log, and a viewport
+running the scenario at `Frame: 888`, `36 FPS`. All three Qt5 libraries mapped
+into the process. Sound and music play in editor mode too.
+
+So what is left of #22 is macOS — where Qt5 is still gone from Homebrew — and
+CI, which has no display.
 
 Note the consequence recorded in the Windows section: enabling the editor drops
 `C4ConsoleWin32.cpp` — and its non-Qt equivalents — from the build, so the two
