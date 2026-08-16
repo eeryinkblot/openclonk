@@ -142,7 +142,13 @@ machine ever ticks. See [ADR-009](decisions.md#adr-009--hold-stdin-open-in-ci-in
   `0ce1ea716` fixed cannot occur in CI and its fix cannot regress-fail. Removing
   the chaining would leave the workflow green. #40.
 - **Actually running the GUI.** `macos-app` builds and inspects the bundle but
-  never launches it; there is no display on the runner.
+  never launches it, and no job builds a client on Linux at all.
+
+  **"No display on the runner" is not the obstacle it has been treated as.**
+  `xvfb-run` is one apt package, and the engine does not need a GPU: it runs on
+  llvmpipe at `GL 4.6 (Core Profile)` and renders the full main menu, verified
+  on the Linux machine with `LIBGL_ALWAYS_SOFTWARE=1`. The real cost is a
+  `HEADLESS_ONLY=OFF` build in CI, which nothing does yet. #45.
 - **Most of the fixes themselves.** The unit tests cover `libmisc` and
   `libc4script`. What guards the rest is the scenario run, the bundle checks and
   the Windows round-trip.

@@ -33,8 +33,8 @@ What it does *not* mean, since the table is easy to over-read:
 - **`mape` is built on one and run on none.** It needs GTK3, so it does not
   exist on macOS or Windows, and no CI job compiles it (#39).
 - **CI covers less than the machines do.** `HEADLESS_ONLY` on two runners,
-  `C4GROUP_TOOL_ONLY` on Windows, no display anywhere. Everything else in this
-  table is one machine, by hand, once.
+  `C4GROUP_TOOL_ONLY` on Windows, and no client build anywhere. Everything else
+  in this table is one machine, by hand, once.
 - **A configuration that builds is not a configuration that is exercised.** See
   the `C4GROUP_TOOL_ONLY` note below, where Linux succeeds by accident of where
   its headers live.
@@ -307,6 +307,15 @@ The client runs under a Wayland session (KDE, `XDG_SESSION_TYPE=wayland`)
 through SDL2 — `sdl2-compat` here, not the original SDL2 — and renders a full
 game at GL 4.6 Core.
 
+**It also runs with no GPU at all.** `LIBGL_ALWAYS_SOFTWARE=1` gives
+`GL 4.6 (Core Profile) Mesa 26.1.7 on llvmpipe (LLVM 22.1.8, 256 bits)`, and the
+main menu renders completely — animated background, buttons, version string.
+Slow, but the engine asks for nothing llvmpipe cannot provide. That matters
+beyond this machine: it is the half of "CI cannot run the GUI" that was worth
+checking, and it is false. The other half, `xvfb-run`, is one package. See #45,
+and note that `xvfb` is *not* installed here, so only the renderer side is
+verified.
+
 ### How to tell whether there is actually sound
 
 The log is not enough. `OpenAL extensions loaded.` says the toolkit came up,
@@ -407,7 +416,7 @@ running the scenario at `Frame: 888`, `36 FPS`. All three Qt5 libraries mapped
 into the process. Sound and music play in editor mode too.
 
 So what is left of #22 is macOS — where Qt5 is still gone from Homebrew — and
-CI, which has no display.
+CI, which could run it under Xvfb but builds no client to run (#45).
 
 Note the consequence recorded in the Windows section: enabling the editor drops
 `C4ConsoleWin32.cpp` — and its non-Qt equivalents — from the build, so the two
@@ -627,7 +636,7 @@ Three things to know before repeating it:
   traps below. That one is a real defect and cost the first build.
 
 Not covered even now: the editor on macOS or Linux, where Qt5 availability is
-the original obstacle and unchanged, and CI, which has no display.
+the original obstacle and unchanged, and CI, which builds no client (#45).
 
 Known-good log lines to check against:
 
