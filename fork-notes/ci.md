@@ -6,8 +6,8 @@ pinned Visual Studio 2017 — so nothing had verified a build since roughly 2020
 Both are removed in this fork; this workflow replaces them.
 
 Triggers: push to `master`, any pull request, and manual dispatch. Runs on the
-same ref cancel each other (`concurrency` with `cancel-in-progress`), and both
-jobs have a 45-minute cap so a stuck build fails instead of running to the
+same ref cancel each other (`concurrency` with `cancel-in-progress`), and every
+job has a 45-minute cap so a stuck build fails instead of running to the
 six-hour default.
 
 ## Jobs
@@ -27,6 +27,34 @@ Builds with `HEADLESS_ONLY=ON`, then:
 | Reject empty group files | `c4group` exiting 0 after a failed pack |
 | Stage packed groups next to the binary | — |
 | Run a scenario, assert `Game started` and `0 warnings, 0 errors` | The engine quitting with exit 0 without running anything |
+
+### `linux-client` — `ubuntu-latest`
+
+The first job to build a **client** rather than a server. Everything else in
+this workflow builds `openclonk-server`, so `C4Window`, `C4DrawGL`, the startup
+dialogs, `src/editor/` and `src/mape/` were compiled by nothing until this
+existed.
+
+Linux is the only platform where all three fit in one job: Qt5 is gone from
+Homebrew, so there is no editor on macOS, and `mape` needs GTK3, so it exists on
+neither macOS nor Windows.
+
+| Step | Guards against |
+| --- | --- |
+| Configure with `HEADLESS_ONLY=OFF` | — |
+| Assert Qt5 found, audio enabled, `Qt5Widgets_DIR` cached | A `find_package` failing quietly and removing a target, leaving a green job that compiled nothing new |
+| Build | — |
+| Build `mape` | The target vanishing when GTK3 or gtksourceview is absent |
+| Assert ≥15 objects under `openclonk.dir/src/editor` and Qt5 in `ldd` | `src/editor/` being added to `OC_GUI_SOURCES`, so a successful link does not prove it was compiled |
+| Assert `ldd` shows epoxy, SDL2, OpenAL, ALUT, vorbisfile | A client that builds without the graphics or audio it exists for |
+
+It **does not launch anything**. That needs `xvfb` and is #45 — the engine runs
+on llvmpipe, so the display was never the obstacle it was taken for.
+
+The three assertions all failed at least once on a developer machine before
+being written: `FindAudio` needs OpenAL *and* ALUT *and* Ogg/Vorbis together and
+says only `Not enabling audio output.` when one is missing, and an absent Qt5 or
+GTK3 removes a target rather than failing a build.
 
 ### `macos-app` — `macos-latest`
 
@@ -67,8 +95,10 @@ successful Windows build of this codebase in about five years. Two upstream
 defects had to be fixed to get there, both in configurations evidently never
 used on that platform: see sections 14 and 15 of [divergence.md](divergence.md).
 
-Typical runtimes: Linux ≈ 5.5 min, macOS headless ≈ 4.5 min, macOS app ≈ 4 min,
-Windows ≈ 4 min.
+Typical runtimes: Linux headless ≈ 5.5 min, macOS headless ≈ 4.5 min, macOS app
+≈ 4 min, Windows ≈ 4 min. The Linux client job is new and its cost is not known
+yet — it builds roughly twice the translation units of the headless one, plus
+the editor and mape.
 
 ## Why the checks are shaped like this
 
@@ -129,18 +159,9 @@ machine ever ticks. See [ADR-009](decisions.md#adr-009--hold-stdin-open-in-ci-in
   [platforms.md](platforms.md#windows-x64) — and needed no source change, so
   extending this job is now a matter of adding vcpkg packages and build time
   rather than an open question. Until that happens it is one machine, once.
-- **The Qt editor.** Qt5 is no longer available from Homebrew, so
-  `WITH_QT_EDITOR` is off in CI and `src/editor/` is not compiled by any job.
-  It is built and run by hand on Windows and on Linux now (#22), so the gap is
-  regression coverage rather than "nobody knows whether it works".
-- **`mape`, anywhere.** Neither `mape` nor `gtk` appears in the workflow, and no
-  job installs GTK3, so `src/mape/` and `src/mapegen/` are compiled by nothing.
-  Not an academic gap: `83b23b4b6` fixed a hard compile error there that a
-  compiler upgrade introduced and no machine but one would ever have seen. #39.
-- **Packing under parallelism.** The pack step is
-  `cmake --build build --target groups` with no `--parallel`, so the race
-  `0ce1ea716` fixed cannot occur in CI and its fix cannot regress-fail. Removing
-  the chaining would leave the workflow green. #40.
+- **The Qt editor on macOS.** Covered on Linux by `linux-client` now. macOS has
+  no Qt5 from Homebrew, so `src/editor/` is still compiled by nothing there, and
+  anything platform-specific in it is unguarded. #22.
 - **Actually running the GUI.** `macos-app` builds and inspects the bundle but
   never launches it, and no job builds a client on Linux at all.
 

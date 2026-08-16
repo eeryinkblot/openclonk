@@ -124,8 +124,18 @@ jobs:
           done
           ctest --test-dir build/tests --output-on-failure
 
+      # Packed in parallel on purpose. Two c4group processes in one directory
+      # used to pick the same temporary file -- MakeTempFilename() finds the
+      # lowest unused <name>.NNN and returns it without claiming it -- which
+      # produced an intermittent "Pack failed", by preference on the largest
+      # group. 0ce1ea716 fixed it by chaining each group onto the previous one.
+      # Packing serially, as this step used to, means that fix cannot
+      # regress-fail: deleting the chaining would leave this workflow green.
+      # It costs nothing, since the chain makes packing serial anyway.
       - name: Pack game data
-        run: cmake --build build --target groups
+        run: |
+          jobs=$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 2)
+          cmake --build build --target groups --parallel "$jobs"
 
       # c4group exits 0 even when packing fails, so the build reports success
       # while writing zero-byte archives. Check the output, not the exit code.
@@ -232,6 +242,110 @@ jobs:
           else
             echo "all $total assertions passed"
           fi
+
+  # The first job to build a client anywhere. Everything above builds
+  # openclonk-server; C4Window, C4DrawGL, the startup dialogs, src/editor/ and
+  # src/mape/ were compiled by nothing in CI until this existed.
+  #
+  # Linux is the only platform where all three can be built at once: Qt5 is gone
+  # from Homebrew (so no editor on macOS) and mape needs GTK3 (so it exists on
+  # neither macOS nor Windows). Both were verified by hand on the Arch machine
+  # first -- see fork-notes/platforms.md -- this makes them regression-tested.
+  #
+  # It does not launch anything. That needs xvfb, and is #45; the engine is
+  # known to run on llvmpipe, so the display is not the obstacle it was assumed
+  # to be for a long time.
+  linux-client:
+    name: Linux client, editor and mape
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Record the platform
+        run: |
+          uname -sm
+          cmake --version | head -1
+          gcc --version | head -1
+
+      # On top of the headless set: a GL loader and SDL2 for the client, the
+      # four audio components FindAudio insists on together, GTK3 with
+      # gtksourceview for mape, and qtbase5-dev for the editor.
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libpng-dev libjpeg-dev libfreetype-dev zlib1g-dev \
+            libcurl4-openssl-dev libminiupnpc-dev \
+            libepoxy-dev libsdl2-dev libglu1-mesa-dev libx11-dev \
+            libopenal-dev libalut-dev libogg-dev libvorbis-dev \
+            libgtk-3-dev libgtksourceview-3.0-dev \
+            qtbase5-dev qtbase5-dev-tools
+
+      - name: Configure
+        run: |
+          cmake -B build-client -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DHEADLESS_ONLY=OFF . | tee configure.log
+
+      # Each of the three is auto-enabled by a find_package that is allowed to
+      # fail quietly, so a missing package does not fail the build -- it removes
+      # the target, and the job would go green having compiled nothing new. All
+      # three failure modes have happened on a developer machine already.
+      # Written with `if` rather than `grep && { ... }`: these steps run under
+      # `bash -e`, where the exit status of a && list is the status of whatever
+      # ran last, and a guard whose grep is *supposed* to find nothing then
+      # reads as a failing command. `if` says what is meant and cannot misfire.
+      - name: Assert the optional pieces were actually enabled
+        run: |
+          status=0
+          if grep -q "Qt5Widgets not found" configure.log; then
+            echo "::error::Qt5 was not found, so src/editor/ is not in this build"
+            status=1
+          fi
+          if grep -q "Not enabling audio output" configure.log; then
+            echo "::error::FindAudio found no complete set, so the client is silent"
+            status=1
+          fi
+          if ! grep -qE "^Qt5Widgets_DIR:" build-client/CMakeCache.txt; then
+            echo "::error::Qt5Widgets_DIR is not in the cache"
+            status=1
+          fi
+          exit $status
+
+      - name: Build
+        run: |
+          jobs=$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 2)
+          cmake --build build-client --parallel "$jobs"
+
+      # mape is EXCLUDE_FROM_ALL in effect -- it only exists when GTK3 and
+      # gtksourceview are both found -- so name it, and let the build fail
+      # loudly if the target is absent rather than silently skipping it.
+      - name: Build mape
+        run: |
+          jobs=$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 2)
+          cmake --build build-client --target mape --parallel "$jobs"
+
+      # The editor sources are added to OC_GUI_SOURCES rather than to a target
+      # of their own, so "openclonk linked" does not prove they were compiled.
+      # Check for the objects.
+      - name: Assert the editor sources were compiled
+        run: |
+          dir=build-client/CMakeFiles/openclonk.dir/src/editor
+          count=$(find "$dir" -name "*.o" 2>/dev/null | wc -l)
+          echo "$count editor objects"
+          [ "$count" -ge 15 ] \
+            || { echo "::error::only $count objects in $dir -- src/editor/ was not built"; exit 1; }
+          ldd build-client/openclonk | grep -E "libQt5(Core|Gui|Widgets)" \
+            || { echo "::error::openclonk does not link Qt5"; exit 1; }
+
+      - name: Assert the client links what a client needs
+        run: |
+          for lib in libepoxy libSDL2 libopenal libalut libvorbisfile; do
+            ldd build-client/openclonk | grep -q "$lib" \
+              || { echo "::error::openclonk does not link $lib"; exit 1; }
+          done
+          echo "GL loader, SDL2 and the full audio set are linked"
 
   macos-app:
     name: macOS app bundle
