@@ -41,6 +41,13 @@ five, and the `awk '/tests total/'` this workflow used matches only
 reported 0 tests" and tripped the guard. `[Pass]` and `[Fail]` come from the
 shared `doTest()` helper and are uniform, so the step counts those.
 
+The two runners agree assertion for assertion, failures included — 290/168/120
+passing, 14 failing in `ObjectInteractionMenu` and 1 in `Movement` on both. That
+is C4Real determinism across clang and GCC, over 906 assertions rather than the
+7 it used to be, and it is now checked on every push rather than by hand. The
+`determinism` unit tests say the same thing about the primitives: sequences
+pinned from pcg32 on GCC pass unchanged on clang.
+
 ### `linux-client` — `ubuntu-latest`
 
 The first job to build a **client** rather than a server. Everything else in
@@ -108,8 +115,9 @@ successful Windows build of this codebase in about five years. Two upstream
 defects had to be fixed to get there, both in configurations evidently never
 used on that platform: see sections 14 and 15 of [divergence.md](divergence.md).
 
-Typical runtimes: Linux headless ≈ 5.5 min, **Linux client ≈ 5.5 min**, macOS
-headless ≈ 5.5 min, macOS app ≈ 6 min, Windows ≈ 1.5 min. The client job costs
+Typical runtimes: Linux headless ≈ 5 min, Linux client ≈ 7 min, macOS headless
+≈ 6 min, macOS app ≈ 4.5 min, Windows ≈ 1.5 min. The five-scenario suite is
+about 70 s of that, less than the single scenario used to cost. The client job costs
 no more than the headless one despite building the editor and mape on top —
 the runner has more cores than the build has serial work.
 
