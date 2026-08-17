@@ -82,34 +82,56 @@ So it covers the 69 real game scenarios — Missions, Worlds, Arena, Parkour,
 Defense, Tutorials — that nothing else loads at all. A script error introduced in
 a mission is invisible to everything in this workflow.
 
-What it does *not* do is gate. It `println!`s the counts it captures and never
-inspects them; the only `panic!` is for failing to spawn the engine, so it exits
-0 whatever it finds. A human has to read the output. It also passes a bare
-`Test.ocp`, so the assertions inside `Tests.ocf` never run under it — which is
-where the "reports success for scenarios whose assertions never ran" note comes
-from, and is a fair criticism of it as an *assertion* runner, not as a lint.
+What it did *not* do, until `ed28194a1`, is gate. It `println!`ed the counts it
+captured and never inspected them; the only `panic!` was for failing to spawn
+the engine, so it exited 0 whatever it found, and a human had to read 99 lines
+of output and notice. It still passes a bare `Test.ocp`, so the assertions
+inside `Tests.ocf` do not run under it — which is where the "reports success for
+scenarios whose assertions never ran" note comes from, and is a fair criticism
+of it as an *assertion* runner, not as a lint. The suite above is what runs
+those.
 
 Note the irony recorded here rather than quietly fixed: the
 `variable_out_of_scope` warning in `LiquidContainer.ocs` (95a1d8094) is exactly
 what this tool was built to surface. It would have found it in 2018 if anyone
 had run it.
 
-**It still works.** Built against Rust 1.93 with its 2018 dependencies
-unchanged, in 2.6 seconds, with one deprecation warning — and run over the whole
-tree it reported 97 of 99 scenarios. 93 are clean; `ScriptError1.ocs` has two
-errors on purpose, and `SkeletonAppend.ocs`, `CableLorrys.ocs` and
-`Benchmarks.ocs` have warnings nobody has looked at. One of them is a
-`FindObject` call still using the Clonk 4 signature.
+**It gates now**, as the `scenario-lint` job. `bc55e8f42` gave it a
+`tests/Cargo.toml`, because the cargo-script it was written for is unmaintained
+and will not install — that alone is much of why nothing started it for eight
+years. `ed28194a1` added `--expect`, and `592b7b754` the job.
 
-The two that report nothing, `CableCars.ocs` and `LiquidSystem.ocs`, die with
-`Required object file Experimental.ocd not available` — `Experimental.ocf`,
-`Tests.ocf` and `Issues.ocf` are not in `OC_C4GROUPS`, so they are never packed
-and two test scenarios cannot run against a packed tree at all.
+Run over the whole tree it covers **99 of 99** scenarios in 1m23s, of which
+**92 are clean**. Seven are not, and none of the seven has been diagnosed:
 
-So this is not a revival project, it is a tool nobody starts. What it needs is a
-decision about gating — and `ScriptError1.ocs` means a naive "fail on any error"
-would be wrong, so it wants pinned per-scenario counts exactly like the suite
-above. #52.
+| Scenario | | |
+| --- | --- | --- |
+| `Tests.ocf/ScriptError1.ocs` | 2 errors | on purpose; it exists to produce them |
+| `Tests.ocf/ColorfulLights.ocs` | 10 warnings | nine globals declared in both `Script.c:10-11` and the generated `Objects.c:3`, plus a deliberate assignment inside an `if` |
+| `Tests.ocf/SkeletonAppend.ocs` | 2 warnings | one a `FindObject` call still using the Clonk 4 signature |
+| `Tests.ocf/CableCars.ocs` | 2 warnings | |
+| `Tests.ocf/LiquidSystem.ocs` | 2 warnings | |
+| `Experimental.ocf/CableLorrys.ocs` | 2 warnings | |
+| `Tests.ocf/Benchmarks.ocs` | 1 warning | |
+
+**Two numbers recorded here before were wrong**, and both were mine. "97 of 99"
+was a consequence of running against a packed tree: `Experimental.ocd`,
+`Experimental.ocf`, `Tests.ocf` and `Issues.ocf` are deliberately not in
+`OC_C4GROUPS`, so `CableCars.ocs` and `LiquidSystem.ocs` could not start —
+`CableCars` needs a definition nested inside *another scenario* in
+`Experimental.ocf`, so symlinking one group is not enough. The lint therefore
+runs against the unpacked tree, which costs nothing: the 97 that run either way
+report identical counts, so packing does not affect script linking.
+
+"93 are clean" was a filter bug: `grep -v "0 warnings, 0 errors"` also drops
+`10 warnings, 0 errors`, which is why `ColorfulLights.ocs` went unmentioned. Any
+count ending in a zero would have vanished the same way. Worth remembering the
+next time a substring stands in for a match.
+
+`ScriptError1.ocs` is why "fail on any error" would have been the wrong rule,
+and the pins are per scenario for the same reason the suite above pins failure
+counts — deviation in **either** direction fails, so a fix has to lower its pin
+in the same commit.
 
 The two runners agree assertion for assertion, failures included — 290/168/120
 passing and 14 failing in `ObjectInteractionMenu` on both. That
@@ -117,6 +139,27 @@ is C4Real determinism across clang and GCC, over 912 assertions rather than the
 7 it used to be, and it is now checked on every push rather than by hand. The
 `determinism` unit tests say the same thing about the primitives: sequences
 pinned from pcg32 on GCC pass unchanged on clang.
+
+### `scenario-lint` — `ubuntu-latest`
+
+The job that runs the content lint described above over all 99 scenarios. Six
+minutes of wall clock in parallel with everything else, 1m23s of which is the
+lint.
+
+| Step | Note |
+| --- | --- |
+| Build `openclonk-server` | `HEADLESS_ONLY=ON`, no gtest, no packing |
+| `cargo build --manifest-path tests/Cargo.toml` | 3.8s; the runner image ships a Rust toolchain |
+| Stage the unpacked planet tree | a copy of the engine in `lintroot/` with `planet` symlinked beside it |
+| Run the lint with `--expect` | fails on any deviation from the pinned counts |
+
+**Why its own job.** The suite in `headless` needs the packed groups staged at
+`build/planet`; this needs the tree unpacked, and that path can only be one of
+them. Layering an unpacked staging onto the packed one also risks writing
+symlinks *into* `planet/` — `mkdir -p` succeeds on an existing symlink to a
+directory, and the next `ln -sf` lands in the source tree. A separate directory
+with its own copy of the binary avoids the question. It skips packing entirely,
+so it is cheaper than the job beside it despite building the engine again.
 
 ### `linux-client` — `ubuntu-latest`
 
@@ -244,11 +287,12 @@ machine ever ticks. See [ADR-009](decisions.md#adr-009--hold-stdin-open-in-ci-in
 
 ## What it does not cover
 
-- **The other 69 scenarios.** The suite covers the five under `Tests.ocf` that
-  hold assertions. `planet/` contains **99** `.ocs` in total — Missions, Worlds,
-  Arena, Parkour, Defense, Tutorials — and no automation loads any of them, so a
-  script error in real game content is caught by nobody. That is what
-  `tests/start_all_scenarios.rs` was written for; see the note below.
+- **The other 94 scenarios, as gameplay.** The suite covers the five under
+  `Tests.ocf` that hold assertions. The `scenario-lint` job loads all 99 and
+  checks what the script engine says about each, which catches a script error
+  anywhere in Missions, Worlds, Arena, Parkour, Defense or Tutorials — but only
+  that. Nothing asserts what those scenarios *do*, because they carry no
+  `doTest()` to assert with.
 
 - **The open scenario bug, as a bug.** `ObjectInteractionMenu.ocs` (#51) still
   fails 14 of 328; what CI guarantees is only that it fails *exactly as much as

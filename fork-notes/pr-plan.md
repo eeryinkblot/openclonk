@@ -395,6 +395,27 @@ behaviour is upstream's own (`0315ea6ef`), by the same author as the test, and
 says in its message that it may break scenarios relying on it. Quote that, and
 mention the reverted-file experiment.
 
+### PR 21 — tests: make the scenario lint runnable and make it gate
+
+| | |
+| --- | --- |
+| Commits | `bc55e8f42`, `ed28194a1` |
+| Files | `tests/Cargo.toml`, `tests/Cargo.lock`, `tests/start_all_scenarios.rs`, `tests/scenario-lint-expected.txt`, `.gitignore` |
+| Effect | A tool upstream already has stops being unrunnable, and starts failing on deviation |
+
+An unusually good fit for a dormant project: it revives their own
+contributor's work rather than proposing something new, and the argument is
+one sentence — cargo-script does not install any more, so the tool cannot be
+started at all.
+
+Worth saying in the description that the pinned file records seven scenarios
+that are not clean *today*, in their tree, and that one of them
+(`ColorfulLights.ocs`, nine duplicate global declarations) has been sitting
+there unnoticed since the editor generated `Objects.c`.
+
+The CI job is fork-local and is deliberately not in this cluster; upstream has
+no working CI to add it to.
+
 ### PR 5 — macOS: audio and app bundling
 
 | | |
