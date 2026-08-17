@@ -338,6 +338,63 @@ Worth mentioning in the PR that this is what `tests/start_all_scenarios.rs`
 exists to find, and that the tool still works (#52) — it makes the change look
 like the first result of a tool upstream already has rather than a drive-by.
 
+### PR 17 — C4Group: two defects in the write path, and the first tests for it
+
+| | |
+| --- | --- |
+| Commits | `9ce177d99`, `5a34e6eef`, `c0c6d8639` |
+| Files | `src/c4group/C4Group.cpp`, `tests/C4GroupTest.cpp` |
+| Effect | No undefined behaviour when packing a directory; a group with a renamed child can be written without a sort list; five tests where there were none |
+
+The strongest cluster here for a dormant reviewer, because it needs no
+platform knowledge and no environment: one lifetime bug visible by reading
+the function, one silent failure with a reproducer, and tests that cover
+both paths.
+
+Order matters — `5a34e6eef` is what makes `c0c6d8639` pass, since the tests
+are the first caller in the tree that does not set a sort list. Lead the PR
+with the lifetime fix; it is the one that needs no argument.
+
+### PR 18 — tests: state what MakeTempFilename does not promise
+
+| | |
+| --- | --- |
+| Commits | `0776ab86f` |
+| Files | `tests/StdFileTest.cpp` |
+| Effect | Two disabled tests defining what a fix has to do |
+
+Send only alongside or after a fix for the function itself. On its own it is
+a bug report written in C++, which is a fine thing to have in this fork and
+an odd thing to ask a stranger to merge.
+
+### PR 19 — CMake: raise the floor to 3.10
+
+| | |
+| --- | --- |
+| Commits | `443690c41` |
+| Files | `CMakeLists.txt`, `cmake/DeployQt.cmake` |
+| Effect | No deprecation warning on CMake 4; three dead workarounds removed |
+
+Independent of everything else and cheap to review. Worth pairing in the
+description with the fact that CMake 4.0 removed `< 3.5` outright, so the old
+floor was already below what any current CMake accepts.
+
+### PR 20 — Movement.ocs: an expectation left behind by a 2019 engine change
+
+| | |
+| --- | --- |
+| Commits | `013d76873` (the scenario half) |
+| Files | `planet/Tests.ocf/Movement.ocs/Script.c` |
+| Effect | The scenario passes 3 of 3 instead of 2 of 3 |
+
+The commit also lowers a CI pin in `.github/workflows/build.yml`, which is
+fork-local — split that hunk out when cherry-picking.
+
+This one has an unusually good argument attached: the commit that changed the
+behaviour is upstream's own (`0315ea6ef`), by the same author as the test, and
+says in its message that it may break scenarios relying on it. Quote that, and
+mention the reverted-file experiment.
+
 ### PR 5 — macOS: audio and app bundling
 
 | | |
@@ -363,7 +420,7 @@ Consider splitting `6333d5498` off into its own PR; it is clean, while
 
 | Commits | Files |
 | --- | --- |
-| `4d1e0ba08`, `18a459494`, `660a1f8f1`, `41c1b6f30`, `c2336894d` | `CLAUDE.md` |
+| `4d1e0ba08`, `18a459494`, `660a1f8f1`, `41c1b6f30`, `c2336894d`, `52be316de` | `CLAUDE.md` |
 | — | `ROADMAP.md` |
 | — | `fork-notes/` |
 
