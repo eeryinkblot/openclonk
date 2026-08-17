@@ -1232,8 +1232,14 @@ bool C4Group::AppendEntry2StdFile(C4GroupEntry *entry, CStdFile &target)
 
 		// Resort group if neccessary
 		// (The group might be renamed by adding, forcing a resort)
+		// Without a sort list there is nothing to sort by, so skip the copy
+		// entirely: SortByList() reports a missing list as failure, and this
+		// used to turn every such write into a silent one. Only the engine and
+		// c4group ever call C4Group_SetSortList(), so anything else embedding
+		// C4Group could not write a group holding a renamed child at all.
 		bool has_temp_file = false;
-		if (entry->ChildGroup
+		if (C4Group_SortList
+		&& entry->ChildGroup
 		&& !entry->NoSort
 		&& !SEqual(GetFilename(file_source), entry->FileName))
 		{
