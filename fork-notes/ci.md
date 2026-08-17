@@ -41,6 +41,27 @@ five, and the `awk '/tests total/'` this workflow used matches only
 reported 0 tests" and tripped the guard. `[Pass]` and `[Fail]` come from the
 shared `doTest()` helper and are uniform, so the step counts those.
 
+Every scenario has a pinned expected failure count — 0 for three of them, 14
+for `ObjectInteractionMenu` (#51) and 1 for `Movement` (#35) — and any deviation
+fails the job.
+
+Pinning rather than warning is the whole point. A scenario allowed to fail
+freely does not merely catch nothing, it **masks**: take
+`ObjectInteractionMenu` from 14 failures to 40 and a warning-only step still
+goes green, with only the number in the message moving. That is the shape of
+blind spot a C++17 bump (#49) or a dependency change (#48) would hide in. The
+pin converts two unfixed bugs into tripwires without anyone having to fix them
+first.
+
+**A count that drops fails too, deliberately.** It means someone fixed the
+underlying bug, and the pin has to come down with it or it starts protecting
+nothing — which is precisely how a guard like this rots. The error message says
+what to do. Both directions were tested by hand before this went in:
+
+    ::error::Movement: 1 of 6 assertions failed, expected 0
+    ::error::Stackable: 0 failures, but 5 are pinned. If this is a fix, lower
+             the pin in this workflow and close the issue it refers to.
+
 ### `tests/start_all_scenarios.rs` is not redundant with this
 
 Written in 2018 by Julius Michaelis, one commit, untouched since. It is easy to
@@ -212,11 +233,9 @@ machine ever ticks. See [ADR-009](decisions.md#adr-009--hold-stdin-open-in-ci-in
   script error in real game content is caught by nobody. That is what
   `tests/start_all_scenarios.rs` was written for; see the note below.
 
-- **Assertions that fail on purpose.** `Movement.ocs` (#35) and
-  `ObjectInteractionMenu.ocs` (#51) report their failures as warnings rather
-  than failing the job, so the three scenarios that pass can gate immediately
-  instead of waiting on someone else's bug. Both gates go in when the issues
-  close.
+- **The two open scenario bugs, as bugs.** `Movement.ocs` (#35) and
+  `ObjectInteractionMenu.ocs` (#51) still fail; what CI guarantees is only that
+  they fail *exactly as much as before*. See the pinned counts below.
 
 - **The rest of Windows.** Only `c4group` is built there. `HEADLESS_ONLY`, the
   full GUI build, the unit tests and a launched engine have since all been

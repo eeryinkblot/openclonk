@@ -201,14 +201,34 @@ jobs:
       # runner waits for that pipe to close.
       - name: Run the scenario suite
         run: |
-          # Movement.ocs fails test 3 on every platform -- Windows/MSVC,
-          # macOS/clang and Linux/gcc all land the rock at [372, 157] against an
-          # expected x > 380, bit-identical -- so it is a wrong expectation
-          # rather than a defect (#35). ObjectInteractionMenu.ocs fails 14 of
-          # 328 in the item-transfer path, cause not yet established (#51).
-          # Both are reported and neither gates, so that the three that pass can
-          # gate immediately rather than waiting on someone else's bug.
-          nongating="Movement ObjectInteractionMenu"
+          # Every scenario has an expected failure count, and the job fails on
+          # any deviation in either direction.
+          #
+          # Two of them are not zero. Movement.ocs fails test 3 on every
+          # platform -- Windows/MSVC, macOS/clang and Linux/gcc all land the
+          # rock at [372, 157] against an expected x > 380, bit-identical -- so
+          # it is a wrong expectation rather than a defect (#35).
+          # ObjectInteractionMenu.ocs fails 14 of 328 in the item-transfer path,
+          # cause not yet established (#51).
+          #
+          # Pinning the counts rather than merely warning about them is the
+          # point. A scenario that is allowed to fail freely does not just catch
+          # nothing, it *masks*: if a change takes ObjectInteractionMenu from 14
+          # failures to 40, a warning-only step still goes green and only the
+          # number in the message moves. The pin turns the two open bugs from
+          # blind spots into tripwires without anyone having to fix them first.
+          #
+          # A count that drops is also a failure, deliberately. It means someone
+          # fixed the underlying bug, and the pin has to come down with it or it
+          # starts protecting nothing -- which is how a guard like this rots.
+          # The message says so.
+          expected_failures() {
+            case "$1" in
+              ObjectInteractionMenu) echo 14 ;;  # #51
+              Movement)              echo 1  ;;  # #35
+              *)                     echo 0  ;;
+            esac
+          }
           status=0
 
           for scenario in Stackable Producers LiquidContainer ObjectInteractionMenu Movement; do
@@ -261,15 +281,18 @@ jobs:
               status=1
             fi
 
+            expected=$(expected_failures "$scenario")
             if [ "$failed" -gt 0 ]; then
               grep -E "\[Fail\]" "$log" | head -20
-              case " $nongating " in
-                *" $scenario "*)
-                  echo "::warning::$scenario: $failed of $((passed + failed)) failed -- known, not gating" ;;
-                *)
-                  echo "::error::$scenario: $failed of $((passed + failed)) assertions failed"
-                  status=1 ;;
-              esac
+            fi
+            if [ "$failed" -gt "$expected" ]; then
+              echo "::error::$scenario: $failed of $((passed + failed)) assertions failed, expected $expected"
+              status=1
+            elif [ "$failed" -lt "$expected" ]; then
+              echo "::error::$scenario: $failed failures, but $expected are pinned. If this is a fix, lower the pin in this workflow and close the issue it refers to."
+              status=1
+            elif [ "$expected" -gt 0 ]; then
+              echo "$scenario: $failed known failures, unchanged"
             fi
             echo "::endgroup::"
           done
