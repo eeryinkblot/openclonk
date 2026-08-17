@@ -103,17 +103,29 @@ rather than being one line: the pre-3.8 `try_compile` wrapper, the
 
 ---
 
-### 5. #49 — `CMAKE_CXX_STANDARD` to 17
+### ~~5. #49 — `CMAKE_CXX_STANDARD` to 17~~ — done
 
-The pivot. Everything above exists to make this safe, and after steps 1-4 the
-ground is as good as it gets without open-ended debugging: the determinism
-primitives have bit-exact tests, the scenario suite runs identically on clang
-and GCC, the one remaining known failure is pinned, and game content is watched.
+`fb3ec7b9c`, and it cost nothing. The entry below budgeted "one build per
+platform to find out"; the finding is that on Linux/GCC 16 with Qt5 there is
+nothing to find. Headless, all four test binaries (101 passing) and the full
+client including the Qt5 editor and `mape` all build, and `Movement.ocs` runs
+3 of 3 with the same positions and the same script-linking counts the C++14
+build produces.
 
-C++14 is what caps googletest at 1.14.0 — a window one release wide, since
-1.10.0 already stopped compiling on GCC 15 — and it is what blocks Qt6. Expect
-the breakage to be loud: C++17's removals are compile errors, not behaviour
-changes. Budget one build per platform to find out.
+Nothing in `src/` uses what C++17 removed — the grep for `auto_ptr`,
+`bind1st`, `random_shuffle`, `unary_function` and `std::iterator` comes back
+empty, and every `register` is a word in a comment.
+
+**What CI settled, and what it did not.** All six jobs went green on the first
+run, so clang builds the engine, the app bundle and a client under C++17 too.
+The gap is Windows: that job builds only `c4group`, which links `libmisc` alone,
+so **MSVC has compiled the archive layer and nothing else** — not
+`libc4script`, not the engine, not the editor. That is one hand-build on the
+Windows machine away from being settled, and is the same gap #30 exists for.
+
+Consequences: googletest has no upper bound any more (nothing needs one), and
+#50 becomes possible. Why not C++20 is ADR-023 — `throw()` is removed there,
+and there are four.
 
 ### 6. #50 — port the editor to Qt6, closing #46
 

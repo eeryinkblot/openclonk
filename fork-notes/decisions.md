@@ -26,6 +26,16 @@ attractive again.
 | [ADR-014](#adr-014--move-the-epoxy-include-behind-use_console-rather-than-dropping-the-file) | Move the epoxy include behind `USE_CONSOLE` | accepted |
 | [ADR-015](#adr-015--route-c4group-failures-through-a-helper-and-leave-one-site-alone) | Route c4group failures through a helper | accepted |
 | [ADR-016](#adr-016--register-tests-by-hand-and-keep-checking-the-ctest-manifest) | Register `tests` by hand, keep checking the manifest | accepted |
+| [ADR-017](#adr-017--run-c4group-through-cmake--e-env-rather-than-moving-the-binaries) | Run c4group through `cmake -E env` | accepted |
+| [ADR-018](#adr-018--exclude-msvc-from-the-pkg-config-branch-instead-of-fixing-the-branch) | Exclude MSVC from the pkg-config branch | accepted |
+| [ADR-019](#adr-019--serialise-the-groups-target-rather-than-repair-maketempfilename) | Serialise `groups` rather than repair `MakeTempFilename` | accepted, defect live (#47) |
+| [ADR-020](#adr-020--widen-the-mock-macros-instead-of-pinning-googletest-harder) | Widen the mock macros, move to googletest 1.14.0 | accepted; ceiling lifted by ADR-023 |
+| [ADR-021](#adr-021--guard-the-resort-at-the-call-site-not-in-sortbylist) | Guard the resort at the call site | accepted |
+| [ADR-022](#adr-022--put-the-cmake-floor-at-310-not-at-the-version-each-policy-needs) | CMake floor at 3.10 | accepted |
+| [ADR-023](#adr-023--c17-now-and-not-c20) | C++17 now, not C++20 | accepted |
+
+The table stopped being maintained after ADR-016 and was caught up on
+2026-08-17. If you add a record, add its row.
 
 ---
 
@@ -652,11 +662,56 @@ to 1.14.0.
   CMake compiles `gtest-all.cc` into the project, and a package ships headers
   and libraries only. That constraint is upstream's and is left alone.
 
+**Superseded in part by [ADR-023](#adr-023--c17-now-and-not-c20).** The upper
+bound described here was `CMAKE_CXX_STANDARD 14`, and the project moved to
+C++17 on 2026-08-17, so 1.15+ is no longer excluded. Nothing needs it; the
+reasoning below is kept as the record of why 1.14.0 was chosen at the time.
+
 **Consequences.** The supported range is now 1.10.0 through 1.14.0 rather than
 exactly 1.10.0, because the variadic macro predates the pin. macOS and Windows
 keep working with the googletest they already have unpacked, and gain
 `(override)` checking on nine mocks that had none. Only CI actually moves, and
 1.14.0 has not yet run on either hosted runner.
+
+## ADR-023 — C++17 now, and not C++20
+
+**Context.** `CMAKE_CXX_STANDARD 14` capped googletest at 1.14.0 and ruled out
+Qt6, which is the only route to an editor on current macOS. The roadmap treated
+the bump as the pivot the rest of the plan was building towards, and budgeted a
+build per platform to find out how bad it was.
+
+**Decision.** 17, measured first. On Linux/GCC 16 with Qt5 it costs nothing:
+headless, all four test binaries (101 passing) and the full client including the
+Qt5 editor and `mape` all build, and `Movement.ocs` runs to 3 of 3 with the same
+positions the C++14 build produces.
+
+**Alternatives.**
+
+- *Stay at 14 until something actually needs 17.* Something did: the googletest
+  floor had already risen to meet the ceiling, leaving a window one release
+  wide, and #50 cannot start at all without this.
+- *Go to C++20 while touching the line.* This is the one that would have cost
+  something. `throw()` is **deprecated** in C++17 and **removed** in C++20, and
+  there are four of them in `C4DrawGL.h` and `StdMeshMaterial.h`. C++20 also
+  brings much larger behaviour surface — the spaceship operator's effect on
+  existing comparison operators, `char8_t`, aggregate initialisation changes.
+  None of it is unmanageable and none of it is needed; taking 17 first means a
+  failure in CI on the other two platforms points at one change rather than two.
+- *Raise it only for the test targets, to unlock newer googletest.* Considered
+  and rejected in ADR-020 as a much larger argument than that change deserved.
+  It stays rejected for the opposite reason now: the project-wide bump turned
+  out to be free, so the narrow version would have bought a split configuration
+  for nothing.
+
+**Consequences.** googletest has no upper bound any more; nothing needs one, so
+all three machines stay on the 1.14.0 they have unpacked. #50 becomes possible.
+
+CI went green on all six jobs at the first attempt, which extends the result to
+clang across the engine, the app bundle and a client. The remaining gap is
+MSVC: the Windows job builds only `c4group`, which links `libmisc` alone, so
+`libc4script`, `libopenclonk`, the engine and the editor have not been compiled
+under C++17 by that compiler. One hand-build on the Windows machine closes it —
+the same gap #30 exists for.
 
 ## ADR-021 — Guard the resort at the call site, not in `SortByList`
 

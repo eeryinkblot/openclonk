@@ -1336,6 +1336,60 @@ identical counts, so packing does not affect script linking.
 
 ---
 
+## 30. `fb3ec7b9c` — the project was still C++14
+
+**Files:** `CMakeLists.txt`, `.github/workflows/build.yml`
+
+### Motivation
+
+`CMAKE_CXX_STANDARD 14` had stopped being free. It capped googletest at 1.14.0
+— a window one release wide, since 1.10.0 no longer compiles on GCC 15 — and it
+ruled out Qt6, which is the only route to an editor on current macOS (#46, #50).
+The roadmap treated this as the pivot everything else was preparing for and
+budgeted a build per platform to find out how bad it was.
+
+### Technical effect
+
+One line, 14 to 17. Measured before it was changed, on Linux with GCC 16.2.1
+and Qt5:
+
+| | |
+| --- | --- |
+| headless (`openclonk-server`, `c4group`, `c4script`) | 0 errors |
+| `tests aul_test StdMeshMath determinism` | built, 101 of 101 pass |
+| full client, including the Qt5 editor and `mape` | builds |
+| `Movement.ocs` | 3 tests, 0 failed |
+
+The scenario is the interesting row: the rock lands at `[372, 157]` and the
+clonks at `[390, 149]` and `[394, 147]`, which are exactly the values the C++14
+build produces, and script linking is unchanged at 91039 lines, 0 warnings,
+0 errors. So the standard change does not move gameplay arithmetic — which for
+a lockstep engine is the property that actually matters.
+
+It is free because nothing in `src/` uses what C++17 removed: no `auto_ptr`,
+`bind1st`/`bind2nd`, `ptr_fun`/`mem_fun`, `random_shuffle`,
+`unary_function`/`binary_function` or `std::iterator`. All 33 `register` matches
+are the word inside comments. The four `throw()` specifications are deprecated
+rather than removed, and do not warn.
+
+Why not C++20 while in the file: `throw()` *is* removed there, and those four
+would have to go with it. [ADR-023](decisions.md#adr-023--c17-now-and-not-c20).
+
+### Risk
+
+Smaller than expected after the first CI run, which was green on all six jobs:
+Linux headless, the Linux client with the Qt5 editor and `mape`, the content
+lint, macOS headless, the macOS app bundle and Windows `c4group`. So clang
+compiles the whole engine and a client under C++17 as well.
+
+What is left is narrower but is the interesting part. The Windows job builds
+**only `c4group`**, which links `libmisc` and nothing else — so MSVC has
+compiled the archive layer under C++17 and not `libc4script`, `libopenclonk`,
+the engine or the editor. MSVC is strict in different places than GCC and clang,
+and the full Windows build is by hand. A revert is one commit if it disagrees.
+
+---
+
 ## Not addressed
 
 Known, deliberately left alone:

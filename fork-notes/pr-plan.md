@@ -395,6 +395,27 @@ behaviour is upstream's own (`0315ea6ef`), by the same author as the test, and
 says in its message that it may break scenarios relying on it. Quote that, and
 mention the reverted-file experiment.
 
+### PR 22 — Raise the language standard to C++17
+
+| | |
+| --- | --- |
+| Commits | `fb3ec7b9c` |
+| Files | `CMakeLists.txt`, `.github/workflows/build.yml` (comment only) |
+| Effect | Lifts the googletest ceiling and makes a Qt6 port possible |
+
+One line, and the PR text should lead with the measurement rather than the
+motivation: nothing in `src/` uses anything C++17 removed, and on GCC 16 with
+Qt5 the headless build, all four test binaries, the full client with editor and
+`mape`, and a scenario run are all unaffected — same positions, same
+script-linking counts.
+
+**Send it after the platform evidence exists.** Upstream cannot check macOS or
+Windows either, so the argument is only as good as the builds behind it. Worth
+waiting until the Windows machine has done a full C++17 build by hand.
+
+Independent of everything else here, but note that a Qt6 port (#50) would have
+to follow it rather than accompany it.
+
 ### PR 21 — tests: make the scenario lint runnable and make it gate
 
 | | |

@@ -40,7 +40,7 @@ changes by running the thing.
 
 ## What this is
 
-OpenClonk is a 2D multiplayer action game engine (C++14, CMake). The repository holds two
+OpenClonk is a 2D multiplayer action game engine (C++17, CMake). The repository holds two
 very different kinds of code:
 
 - `src/` — the C++ engine (executables `openclonk`, `openclonk-server`, `c4group`, `c4script`, `mape`, `netpuncher`)
@@ -333,11 +333,13 @@ curl -sSL -o gtest.tar.gz \
 tar xzf gtest.tar.gz            # yields googletest-1.14.0/{googletest,googlemock}
 ```
 
-**Version matters, and it is pinned from both ends.** Below 1.14.0 the library itself will not
+**Version matters, and the floor is real.** Below 1.14.0 the library itself will not
 compile on a current toolchain: 1.10.0, which this used to pin, omits `#include <cstdint>` in
 `gtest-death-test.cc` and `gtest-port.cc`, and GCC 15 and later stopped supplying it
-transitively. Above it, the project is `CMAKE_CXX_STANDARD 14` with `STANDARD_REQUIRED ON`,
-which rules out 1.15+. Note the tag naming changes at 1.11 — `release-1.10.0` but `v1.14.0`.
+transitively. There is no upper bound any more: it used to be `CMAKE_CXX_STANDARD 14`,
+which ruled out 1.15+, and the project is on **C++17** since `fb3ec7b9c`. Moving past
+1.14.0 is now a choice and nothing needs it, so all three machines stay on the copy they
+have unpacked. Note the tag naming changes at 1.11 — `release-1.10.0` but `v1.14.0`.
 
 The tests used the arity-based `MOCK_METHOD1`/`MOCK_METHOD2` macros, which later googletest
 releases dropped; they now use the variadic `MOCK_METHOD`, which 1.10.0 understands too, so an
