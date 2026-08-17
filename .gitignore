@@ -167,3 +167,7 @@ ui_C4ConsoleQt*.h
 resource.qrc.depends
 *.exp
 qt.conf
+
+# Logs written by the CI scenario suite, and by running it locally
+/engine.log
+/scenario-*.log

@@ -93,7 +93,7 @@ jobs:
       - name: Build test targets
         run: |
           jobs=$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 2)
-          cmake --build build --target tests aul_test StdMeshMath --parallel "$jobs"
+          cmake --build build --target tests aul_test StdMeshMath determinism --parallel "$jobs"
 
       # Asserting the property directly rather than relying on libepoxy being
       # absent from the runner: HEADLESS_ONLY claims to skip the graphics
@@ -118,7 +118,7 @@ jobs:
         run: |
           listing=$(ctest --test-dir build/tests -N)
           echo "$listing"
-          for t in tests aul_test StdMeshMath; do
+          for t in tests aul_test StdMeshMath determinism; do
             echo "$listing" | grep -qE "Test +#[0-9]+: $t\$" \
               || { echo "::error::$t is not registered with ctest"; exit 1; }
           done
@@ -185,63 +185,96 @@ jobs:
       # InitializePlayer only ran for the scenario's script player, and
       # LaunchTest(1) was never reached. The scenario reported "Game started"
       # and ran 0 of its assertions.
-      - name: Run a scenario
+      # Runs all five scenarios that contain assertions, not just Movement.ocs.
+      # The other 25 under Tests.ocf hold no doTest() at all, so this is the
+      # whole suite: 906 executed assertions against the 7 this step used to
+      # cover. See #36.
+      #
+      # Polls for the harness's completion line instead of sleeping a fixed 90
+      # seconds. The scenarios finish in 1 to 42 seconds of engine time, so the
+      # old sleep was ~25x longer than the work and the whole suite still costs
+      # less than the single scenario did.
+      #
+      # Terminating has to be forced. Without an stdin EOF to act on, the macOS
+      # build does not react to SIGTERM, and the step would hang until the job
+      # timeout. The tail has to go too: it inherits the step's stdout and the
+      # runner waits for that pipe to close.
+      - name: Run the scenario suite
         run: |
-          tail -f /dev/null | ./build/openclonk-server --language=US \
-            "$PWD/planet/Tests.ocf/Movement.ocs" "$PWD/planet/Test.ocp" \
-            > engine.log 2>&1 &
-          pid=$!
-          sleep 90
-          # Terminating has to be forced. Without an stdin EOF to act on, the
-          # macOS build does not react to SIGTERM here, and the step then hangs
-          # until the job timeout. Also drop the tail: it inherits the step's
-          # stdout, and the runner waits for that pipe to close.
-          kill $pid 2>/dev/null || true
-          sleep 5
-          kill -9 $pid 2>/dev/null || true
-          pkill -f "tail -f /dev/null" 2>/dev/null || true
-          wait $pid 2>/dev/null || true
-          cat engine.log
-          grep -q "Game started" engine.log \
-            || { echo "::error::the engine never started the scenario"; exit 1; }
-          grep -Eq "C4AulScriptEngine linked - .*, 0 warnings, 0 errors" engine.log \
-            || { echo "::error::script engine reported warnings or errors"; exit 1; }
+          # Movement.ocs fails test 3 on every platform -- Windows/MSVC,
+          # macOS/clang and Linux/gcc all land the rock at [372, 157] against an
+          # expected x > 380, bit-identical -- so it is a wrong expectation
+          # rather than a defect (#35). ObjectInteractionMenu.ocs fails 14 of
+          # 328 in the item-transfer path, cause not yet established (#51).
+          # Both are reported and neither gates, so that the three that pass can
+          # gate immediately rather than waiting on someone else's bug.
+          nongating="Movement ObjectInteractionMenu"
+          status=0
 
-      # Assert the assertions ran. Everything above is satisfied by a scenario
-      # that loads and does nothing, which is exactly the state this suite was
-      # in: 30 scenarios holding 496 doTest() calls, none of them executed.
-      #
-      # This deliberately does NOT fail on a failing assertion yet. Movement.ocs
-      # test 3 fails on every platform -- Windows/MSVC, macOS/clang and
-      # Linux/gcc all land the rock at [372, 157] against an expected x > 380,
-      # bit-identical -- so it is a wrong expectation rather than a defect, and
-      # gating on it would only paint master red. Tracked separately; the gate
-      # goes in once the expectation is corrected. Until then the counts are
-      # printed and a failure is loud in the log but does not fail the job.
-      #
-      # The identical positions across three toolchains are themselves worth
-      # having: that is C4Real determinism holding, checked rather than assumed.
-      - name: Assert the scenario tests actually ran
-        run: |
-          grep -q "All tests have been completed" engine.log \
-            || { echo "::error::the test harness never finished -- no assertions ran"; exit 1; }
-          # awk, not sed: `\+` is a GNU extension that BSD sed does not accept,
-          # so the macOS job parsed every count as empty while Linux was fine.
-          # The summary lines are "* N tests total" / "N tests failed" /
-          # "N tests skipped", each prefixed with a timestamp, so the count is
-          # always the third field from the end. `+0` makes a missing line 0.
-          total=$(awk '/tests total/   {n=$(NF-2)} END {print n+0}' engine.log)
-          failed=$(awk '/tests failed/  {n=$(NF-2)} END {print n+0}' engine.log)
-          skipped=$(awk '/tests skipped/ {n=$(NF-2)} END {print n+0}' engine.log)
-          echo "total=$total failed=$failed skipped=$skipped"
-          [ "${total:-0}" -gt 0 ] \
-            || { echo "::error::the harness ran but reported 0 tests"; exit 1; }
-          grep -E "^\[.*\] \[Fail\]" engine.log || true
-          if [ "${failed:-0}" -gt 0 ] || [ "${skipped:-0}" -gt 0 ]; then
-            echo "::warning::$failed failed, $skipped skipped of $total -- not gating yet, see the note in this workflow"
-          else
-            echo "all $total assertions passed"
-          fi
+          for scenario in Stackable Producers LiquidContainer ObjectInteractionMenu Movement; do
+            log="scenario-$scenario.log"
+            echo "::group::$scenario"
+
+            tail -f /dev/null | ./build/openclonk-server --language=US \
+              "$PWD/planet/Tests.ocf/$scenario.ocs" "$PWD/planet/Test.ocp" \
+              > "$log" 2>&1 &
+            pid=$!
+
+            # Four different summary wordings exist across the five scenarios,
+            # so match the common prefix rather than any one of them. Parsing
+            # "N tests total" would find only Movement.ocs and score the other
+            # four as "reported 0 tests".
+            for _ in $(seq 180); do
+              grep -qE "All tests have|At least one test has failed" "$log" && break
+              sleep 1
+            done
+
+            kill $pid 2>/dev/null || true
+            sleep 2
+            kill -9 $pid 2>/dev/null || true
+            pkill -f "tail -f /dev/null" 2>/dev/null || true
+            wait $pid 2>/dev/null || true
+
+            # A player that fails to load is not substituted -- C4ClientPlayerInfos
+            # deletes the info (C4PlayerInfo.cpp:412) -- so InitializePlayer only
+            # runs for the script player, LaunchTest(1) is never reached, and the
+            # scenario reports "Game started" having executed nothing. That was
+            # the state the whole suite was in until 9bbe4cde9.
+            if ! grep -q "Player join: Test" "$log"; then
+              echo "::error::$scenario: no player joined, so no assertion ran"
+              tail -20 "$log"
+              status=1
+              echo "::endgroup::"
+              continue
+            fi
+            grep -Eq "C4AulScriptEngine linked - .*, 0 warnings, 0 errors" "$log" \
+              || { echo "::error::$scenario: script engine reported warnings or errors"; status=1; }
+
+            # [Pass] and [Fail] come from the shared doTest() helper and are the
+            # only uniform signal across the five scenarios.
+            passed=$(grep -c "\[Pass\]" "$log" || true)
+            failed=$(grep -c "\[Fail\]" "$log" || true)
+            echo "$scenario: $passed passed, $failed failed"
+
+            if [ "$passed" -eq 0 ]; then
+              echo "::error::$scenario: the harness ran but executed no assertions"
+              status=1
+            fi
+
+            if [ "$failed" -gt 0 ]; then
+              grep -E "\[Fail\]" "$log" | head -20
+              case " $nongating " in
+                *" $scenario "*)
+                  echo "::warning::$scenario: $failed of $((passed + failed)) failed -- known, not gating" ;;
+                *)
+                  echo "::error::$scenario: $failed of $((passed + failed)) assertions failed"
+                  status=1 ;;
+              esac
+            fi
+            echo "::endgroup::"
+          done
+
+          exit $status
 
   # The first job to build a client anywhere. Everything above builds
   # openclonk-server; C4Window, C4DrawGL, the startup dialogs, src/editor/ and

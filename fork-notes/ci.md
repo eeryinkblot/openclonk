@@ -20,13 +20,26 @@ Builds with `HEADLESS_ONLY=ON`, then:
 | --- | --- |
 | Configure, asserting gtest was found | CMake silently omitting the test targets when the sources are missing |
 | Build | — |
-| Build `tests aul_test StdMeshMath` | — |
+| Build `tests aul_test StdMeshMath determinism` | — |
 | Assert no GL loader in the server | `HEADLESS_ONLY` quietly acquiring a graphics dependency |
-| Run `ctest`, asserting all three binaries are registered | A target added without `add_test()` dropping out of the suite unnoticed |
+| Run `ctest`, asserting all four binaries are registered | A target added without `add_test()` dropping out of the suite unnoticed |
 | Pack game data | — |
 | Reject empty group files | `c4group` exiting 0 after a failed pack |
 | Stage packed groups next to the binary | — |
-| Run a scenario, assert `Game started` and `0 warnings, 0 errors` | The engine quitting with exit 0 without running anything |
+| Run all five scenarios that hold assertions | The engine quitting with exit 0 without running anything, and 899 written assertions never executing |
+
+The scenario step runs **all five** scenarios that contain assertions — the
+other 25 under `Tests.ocf` hold no `doTest()` at all, so that is the whole
+suite, 906 executed assertions against the 7 this used to cover. It polls for
+the harness's completion line rather than sleeping a fixed 90 seconds: the
+scenarios finish in 1 to 42 seconds of engine time, so the whole suite now costs
+less than the single scenario did.
+
+**Do not parse the summary line.** Four different wordings exist across the
+five, and the `awk '/tests total/'` this workflow used matches only
+`Movement.ocs` — the other four would have scored as "the harness ran but
+reported 0 tests" and tripped the guard. `[Pass]` and `[Fail]` come from the
+shared `doTest()` helper and are uniform, so the step counts those.
 
 ### `linux-client` — `ubuntu-latest`
 
@@ -153,27 +166,11 @@ machine ever ticks. See [ADR-009](decisions.md#adr-009--hold-stdin-open-in-ci-in
 
 ## What it does not cover
 
-- **The scenario suite, almost entirely.** One scenario runs, `Movement.ocs`,
-  which holds 7 of the 906 assertions the suite executes. They are not spread
-  thinly over 29 unrun scenarios, as #36 assumed: they live in **five** files
-  and the four that never run hold 899 of them. All four were run by hand for
-  the first time on the Linux machine —
-
-  | Scenario | Assertions | Result |
-  | --- | --- | --- |
-  | `Stackable.ocs` | 290 | pass |
-  | `Producers.ocs` | 168 | pass |
-  | `LiquidContainer.ocs` | 120 | pass |
-  | `ObjectInteractionMenu.ocs` | 328 | **14 fail** (#51) |
-
-  Three of four green, and one real failure nobody had seen. Closing this is
-  four `run:` steps, not thirty. #36.
-
-  **Do not parse the summary line to do it.** Four different wordings exist
-  across the five scenarios, and the `awk '/tests total/'` this workflow uses
-  matches only `Movement.ocs`; the other four would score as "the harness ran
-  but reported 0 tests". Count `[Pass]` and `[Fail]` instead — those come from
-  the shared `doTest()` helper and are uniform.
+- **Assertions that fail on purpose.** `Movement.ocs` (#35) and
+  `ObjectInteractionMenu.ocs` (#51) report their failures as warnings rather
+  than failing the job, so the three scenarios that pass can gate immediately
+  instead of waiting on someone else's bug. Both gates go in when the issues
+  close.
 
 - **The rest of Windows.** Only `c4group` is built there. `HEADLESS_ONLY`, the
   full GUI build, the unit tests and a launched engine have since all been
