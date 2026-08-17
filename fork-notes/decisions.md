@@ -657,3 +657,70 @@ exactly 1.10.0, because the variadic macro predates the pin. macOS and Windows
 keep working with the googletest they already have unpacked, and gain
 `(override)` checking on nine mocks that had none. Only CI actually moves, and
 1.14.0 has not yet run on either hosted runner.
+
+## ADR-021 — Guard the resort at the call site, not in `SortByList`
+
+**Context.** `AppendEntry2StdFile` reads a `false` from
+`SortByList(C4Group_SortList, ...)` as a write failure. That function returns
+`false` for exactly one reason — no list was passed — so any embedder that
+never called `C4Group_SetSortList()` cannot write a group containing a renamed
+child group, and the failure arrives with an empty error string. See
+[divergence 26](divergence.md#26-5a34e6eef--writing-a-group-failed-silently-without-a-sort-list).
+
+**Decision.** Skip the whole resort block when `C4Group_SortList` is null.
+
+**Alternatives.**
+
+- *Make `SortByList` return `true` for a null list.* The tidier reading —
+  nothing to sort is not a failure — and it fixes the caller without touching
+  it. Rejected because the resort block does more than sort: it copies the
+  group to a temporary file, opens it, closes it and erases it. With no sort
+  list that entire round trip provably cannot change a byte. Fixing the return
+  value would leave the pointless copy in place and make it look intentional.
+- *Document that embedders must call `C4Group_SetSortList()` first.* This is
+  what the code effectively requires today. Rejected: an unmet precondition
+  that manifests as a silent write failure with a cleared error string is the
+  worst available way to state a requirement, and the two callers that do it
+  are both in this tree, so nobody outside would ever see the rule.
+- *Refuse to open a group for writing without a sort list.* Turns a silent
+  failure into a loud one, but a sort list is genuinely optional — reading and
+  most writing do not need one — so this would reject correct programs.
+
+**Consequences.** The engine and `c4group` are unaffected: both set a list, so
+the guard is true wherever the branch used to run, which is why repacking the
+game data produces the same twelve groups. The `Error` call stays, now covering
+only a `SortByList` failure mode that does not currently exist. And the reason
+this was found at all — a unit test driving C4Group as a library — is worth
+keeping in mind for the rest of the class: the defect was old, cheap to fix,
+and invisible to every program in the tree.
+
+## ADR-022 — Put the CMake floor at 3.10, not at the version each policy needs
+
+**Context.** `cmake_minimum_required (VERSION 3.5.1)` sat one patch version
+above the compatibility CMake 4.0 removed outright, and CMake 4 warns on
+anything below 3.10. Two blocks in `CMakeLists.txt` existed only to work around
+older versions: a `try_compile` wrapper for pre-3.8 (CMP0067) and an IPO
+fallback for pre-3.9 (CMP0069).
+
+**Decision.** 3.10, and delete both workarounds plus a pre-3.6 warning in
+`cmake/DeployQt.cmake` that the floor makes unreachable.
+
+**Alternatives.**
+
+- *3.8 or 3.9 — exactly what the policies need.* Cheapest defensible bump, and
+  it still leaves the deprecation warning on every configure, which is the
+  thing that prompted this. A floor nobody's toolchain is near should be picked
+  by what the tooling asks for, not by the oldest thing that compiles.
+- *Jump to a modern floor — 3.16 for `target_precompile_headers`, or 3.20.*
+  Tempting while in the file, and this fork does want those eventually.
+  Rejected for now: it is a claim about what every machine building this must
+  have, made in advance of any feature needing it. Take it when something does.
+- *Keep 3.5.1 and pass `-Wno-deprecated`.* Hides the one signal that will say
+  when the floor stops working at all.
+
+**Consequences.** 3.10 is from 2017 and older than the CMake on all three
+development machines and all three CI runners, so nothing is cut off. It also
+sets CMP0067 and CMP0069 to NEW by itself, which is what the deleted blocks did
+by hand — the IPO check now runs unconditionally instead of behind
+`if(POLICY CMP0069)`. Unrelated policy warnings (CMP0071 on the autogen path)
+are untouched and still there.

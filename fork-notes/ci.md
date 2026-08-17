@@ -30,7 +30,10 @@ Builds with `HEADLESS_ONLY=ON`, then:
 
 The scenario step runs **all five** scenarios that contain assertions — the
 other 25 under `Tests.ocf` hold no `doTest()` at all, so that is the whole
-suite, 906 executed assertions against the 7 this used to cover. It polls for
+suite, 912 executed assertions against the 7 this used to cover — 290 Stackable,
+168 Producers, 120 LiquidContainer, 328 ObjectInteractionMenu, 6 Movement,
+counted from a run rather than summed from memory; the 906 recorded here before
+left Movement's six out. It polls for
 the harness's completion line rather than sleeping a fixed 90 seconds: the
 scenarios finish in 1 to 42 seconds of engine time, so the whole suite now costs
 less than the single scenario did.
@@ -41,9 +44,10 @@ five, and the `awk '/tests total/'` this workflow used matches only
 reported 0 tests" and tripped the guard. `[Pass]` and `[Fail]` come from the
 shared `doTest()` helper and are uniform, so the step counts those.
 
-Every scenario has a pinned expected failure count — 0 for three of them, 14
-for `ObjectInteractionMenu` (#51) and 1 for `Movement` (#35) — and any deviation
-fails the job.
+Every scenario has a pinned expected failure count — 0 for four of them and 14
+for `ObjectInteractionMenu` (#51) — and any deviation fails the job. `Movement`
+was the fifth, pinned at 1, until `013d76873` corrected the expectation its
+test 3 had carried since 2019 (#35) and brought the pin down with it.
 
 Pinning rather than warning is the whole point. A scenario allowed to fail
 freely does not merely catch nothing, it **masks**: take
@@ -108,8 +112,8 @@ would be wrong, so it wants pinned per-scenario counts exactly like the suite
 above. #52.
 
 The two runners agree assertion for assertion, failures included — 290/168/120
-passing, 14 failing in `ObjectInteractionMenu` and 1 in `Movement` on both. That
-is C4Real determinism across clang and GCC, over 906 assertions rather than the
+passing and 14 failing in `ObjectInteractionMenu` on both. That
+is C4Real determinism across clang and GCC, over 912 assertions rather than the
 7 it used to be, and it is now checked on every push rather than by hand. The
 `determinism` unit tests say the same thing about the primitives: sequences
 pinned from pcg32 on GCC pass unchanged on clang.
@@ -246,9 +250,18 @@ machine ever ticks. See [ADR-009](decisions.md#adr-009--hold-stdin-open-in-ci-in
   script error in real game content is caught by nobody. That is what
   `tests/start_all_scenarios.rs` was written for; see the note below.
 
-- **The two open scenario bugs, as bugs.** `Movement.ocs` (#35) and
-  `ObjectInteractionMenu.ocs` (#51) still fail; what CI guarantees is only that
-  they fail *exactly as much as before*. See the pinned counts below.
+- **The open scenario bug, as a bug.** `ObjectInteractionMenu.ocs` (#51) still
+  fails 14 of 328; what CI guarantees is only that it fails *exactly as much as
+  before*. See the pinned counts below. `Movement.ocs` was the other one and is
+  green since `013d76873`.
+
+- **Reproducibility.** A scenario run is not repeatable: `RandomSeed` is
+  `time(nullptr)` for a local game, and the seed reaches gameplay. Two runs of
+  `Movement.ocs` differ by a pixel or two in every reported position. A pinned
+  *count* survives that, since no assertion sits close enough to a boundary to
+  flip — but it is the reason the counts are pinned rather than the positions,
+  and it is worth knowing before a new assertion is written. See
+  [platforms.md](platforms.md#scenario-run--verified-here).
 
 - **The rest of Windows.** Only `c4group` is built there. `HEADLESS_ONLY`, the
   full GUI build, the unit tests and a launched engine have since all been

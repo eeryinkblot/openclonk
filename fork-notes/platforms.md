@@ -440,11 +440,29 @@ cmake --build build --target tests aul_test StdMeshMath --parallel 24
 
 ### Scenario run — verified here
 
-Identical to the other two platforms, **including the failure**: `Movement.ocs`
-reports 3 tests, 1 failed, 0 skipped, and the failing one is test 3, the rock
-position of issue #35. Linux puts the rock at `[372, 157]` where the assertion
-wants X > 380 — so it is not a platform disagreement, it is an assertion no
-platform satisfies.
+Identical to the other two platforms. `Movement.ocs` reports 3 tests, 0 failed,
+0 skipped since `013d76873`; before that its test 3 failed everywhere, and the
+expectation was what was wrong (#35, [divergence 28](divergence.md#28-013d76873--movementocs-test-3-asserted-a-pre-2019-rock-position)).
+
+Measured here while settling that, and it applies to every scenario on every
+platform: **the same scenario does not produce the same result twice.**
+`RandomSeed = time(nullptr)` for a local game (`src/game/C4Game.cpp:341`), and
+the seed reaches gameplay. Twenty runs of `Movement.ocs` produced exactly two
+outcomes for the rock — `[372, 157]` ten times, `[374, 158]` ten times — with
+the clonk in test 1 shifting by one pixel in step. Ten fixed seeds split the
+same way, and a fixed seed repeats its own outcome exactly.
+
+So the engine is deterministic and the run is not. Two consequences worth
+carrying:
+
+- A scenario assertion on a position needs a **range**, not a bound or an
+  equality, and the range has to cover every state the seed can produce.
+- A position observed twice is not established. The claim that all three
+  platforms land the rock at `[372, 157]` "bit-identically" was recorded here,
+  in `ci.md` and in `ROADMAP.md` from single runs per platform; it was one of
+  two values each of them produces. See [Repetition is not corroboration](#repetition-is-not-corroboration)
+  — this one was worse than repetition, it was three observations of a coin
+  that lands on its edge half the time.
 
 ### Traps paid for here
 

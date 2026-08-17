@@ -1,6 +1,7 @@
 # Roadmap
 
-What to do next, in order, and why that order. Written 2026-08-17 at `16ca9057d`.
+What to do next, in order, and why that order. Written 2026-08-17 at `16ca9057d`,
+updated the same day at `013d76873`: steps 1, 2 and 4 are done.
 
 **Fork-local. Never include this file in a PR branch** — same rule as `CLAUDE.md`
 and everything under `fork-notes/`.
@@ -20,39 +21,47 @@ matrix is "derived" any more.
 | | |
 | --- | --- |
 | CI jobs | 5, all green: Linux headless, Linux client, macOS headless, macOS app bundle, Windows c4group |
-| Unit tests | 96 over four binaries (`tests`, `aul_test`, `StdMeshMath`, `determinism`) |
-| Scenario assertions in CI | 906, across the five scenarios that have any |
-| Known failing | 15 assertions, pinned per scenario so they cannot silently grow (#35, #51) |
+| Unit tests | 101 over four binaries (`tests`, `aul_test`, `StdMeshMath`, `determinism`), plus 2 disabled that state a known defect (#47) |
+| Scenario assertions in CI | 912, across the five scenarios that have any |
+| Known failing | 14 assertions, all in `ObjectInteractionMenu.ocs`, pinned so they cannot silently grow (#51) |
 
 What CI does **not** do: launch anything (#45), build a client on Windows or
 macOS (#30), or load the 69 real game scenarios outside `Tests.ocf` (#52).
 
 ## The order
 
-### 1. #41 — `C4Group::AddEntryOnDisk` reads a buffer after its scope ends
+### ~~1. #41 — `C4Group::AddEntryOnDisk` reads a buffer after its scope ends~~ — done
 
-First because it is the only finding that is certainly a defect and needs no
-argument. `temp_filename` is declared inside the `if (DirectoryExists(...))`
-block, `filename` is pointed at it, the block ends, and four later statements
-read it. Undefined behaviour in the path every `groups` build takes for every
-directory it packs.
+`9ce177d99` moves the declaration up. `c0c6d8639` adds the first five tests the
+group format has ever had (#33), and `0776ab86f` two disabled ones stating what
+`MakeTempFilename` does not promise (#47) — disabled so CI stays a signal, and
+so the count of known-broken things stays where gtest prints it every run.
 
-The fix is moving one declaration up. Do it together with:
+The tests paid for themselves before they were finished: driving C4Group as a
+library rather than as part of a program that configures it surfaced a third
+defect, fixed in `5a34e6eef`. `AppendEntry2StdFile` read "no sort list was set"
+as a write failure, so any embedder that never called `C4Group_SetSortList()`
+could not write a group holding a renamed child group — and the failure arrived
+with an empty error string. Needs an issue; `gh` was unauthenticated again.
 
-- **#33** — the first unit test to cover `C4Group` at all. This fork's first two
-  defects lived in that class and nothing tests it.
-- **#47** — `MakeTempFilename` hands out a name without claiming it. A collision
-  test is three lines: call it twice without creating anything and assert the
-  results differ. Fixing the function itself is a bigger decision, recorded as
-  ADR-019; the test can land first and will fail until someone takes it on.
+Still open in this area: #47 itself, and the fact that the lifetime bug in #41
+was found by reading and could not have been found by these tests. A sanitizer
+job would be the thing that catches the next one.
 
-### 2. #35 — `Movement.ocs` test 3 expects a rock position no platform produces
+### ~~2. #35 — `Movement.ocs` test 3 expects a rock position no platform produces~~ — done
 
-Cheap, and it closes a wound rather than adding coverage. Windows, macOS and
-Linux all land the rock at `[372, 157]` against an expected `x > 380`,
-bit-identical, so the expectation is wrong rather than the engine. Establish
-from the history whether `380` was ever right, correct the number, then lower
-the pin in `.github/workflows/build.yml` from 1 to 0.
+`013d76873`. The history settles it: the test was written 2019-03-13 and the
+movement rewrite that changed the result landed 2019-06-22, saying in its own
+commit message that it "may break scenarios that rely on this specific
+behaviour". Confirmed by reverting only `C4Movement.cpp` on today's tree, which
+makes test 3 pass and test 2 fail. The pin is down to 0.
+
+**The premise of the old entry was wrong, and the correction matters more than
+the fix.** `[372, 157]` is not bit-identical across platforms — it is one of
+two values *this* machine produces. `RandomSeed = time(nullptr)` for a local
+game, so a scenario run is not repeatable: twenty runs gave `[372, 157]` and
+`[374, 158]` ten times each. The new assertion is a range for that reason, and
+any future scenario assertion needs to be one too.
 
 ### 3. #52 — put `start_all_scenarios.rs` back in service
 
@@ -74,11 +83,12 @@ Known non-clean today: `ScriptError1` (2 errors, intentional), `SkeletonAppend`
 cannot run against a packed tree at all, because `Experimental.ocf`, `Tests.ocf`
 and `Issues.ocf` are not in `OC_C4GROUPS`.
 
-### 4. #44 — raise `cmake_minimum_required` above 3.5.1
+### ~~4. #44 — raise `cmake_minimum_required` above 3.5.1~~ — done
 
-One line. CMake 4 already warns that compatibility below 3.10 is going away, and
-the project sits one patch version above the floor that was removed in 4.0. Take
-it while you are in `CMakeLists.txt` for #41.
+`443690c41`, at 3.10 rather than higher (ADR-022). It came with three deletions
+rather than being one line: the pre-3.8 `try_compile` wrapper, the
+`if(POLICY CMP0069)` guard around the IPO check, and a pre-3.6 warning in
+`cmake/DeployQt.cmake`. The floor sets both policies to NEW by itself.
 
 ---
 
@@ -87,7 +97,7 @@ it while you are in `CMakeLists.txt` for #41.
 The pivot. Everything above exists to make this safe, and after steps 1-4 the
 ground is as good as it gets without open-ended debugging: the determinism
 primitives have bit-exact tests, the scenario suite runs identically on clang
-and GCC, the two known failures are pinned, and game content is watched.
+and GCC, the one remaining known failure is pinned, and game content is watched.
 
 C++14 is what caps googletest at 1.14.0 — a window one release wide, since
 1.10.0 already stopped compiling on GCC 15 — and it is what blocks Qt6. Expect
@@ -167,3 +177,9 @@ The issue numbers were taken from the session that produced them, not from a
 fresh query — `gh` stopped answering at the end of it (`HTTP 401` on the GraphQL
 API, then timeouts). Everything referenced here was created or read during that
 session, but if the list has moved since, this file has not.
+
+Still true on 2026-08-17: `gh issue list` returns `HTTP 401: Requires
+authentication`. So nothing here has been checked against the tracker, the two
+issues closed today (#35, #44) are closed only in this file, and the C4Group
+sort-list defect found while doing #33 has no issue at all. Run
+`gh auth login -h github.com` before trusting any number on this page.

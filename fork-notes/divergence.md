@@ -1092,6 +1092,175 @@ the tree satisfies it.
 
 ---
 
+## 25. `9ce177d99` — a packed directory's temp filename was read after its scope ended
+
+**Files:** `src/c4group/C4Group.cpp`
+
+### Motivation
+
+`C4Group::AddEntryOnDisk` declares the buffer holding the temporary name inside
+the `if (DirectoryExists(filename))` block:
+
+```cpp
+if (DirectoryExists(filename))
+{
+    char temp_filename[_MAX_PATH_LEN];
+    ...
+    filename = temp_filename;
+    move = true;
+}
+
+bool fIsGroup = !!C4Group_IsGroup(filename);   // reads it
+int size = ... UncompressedFileSize(filename); // reads it
+is_executable = (access(filename, X_OK) == 0); // reads it
+return AddEntry(..., filename, ...);           // stores it
+```
+
+`filename` is pointed at a local that ceases to exist one line later, and four
+statements then read through it. That is undefined behaviour rather than a
+style problem, and it is not a rare path: every directory any `groups` build
+packs goes through it, which is every nested `.ocd` in the game data.
+
+Found by reading, not by a failure. It works today because nothing else claims
+that stack slot between the block's end and the reads — an accident the
+compiler is free to stop granting at any optimisation level.
+
+### Technical effect
+
+The declaration moves one block up, with a comment saying why it is there.
+Nothing else changes; the same bytes end up in the same entry.
+
+### Risk
+
+None. The buffer is `_MAX_PATH_LEN` on the stack either way, and its lifetime
+only grows.
+
+---
+
+## 26. `5a34e6eef` — writing a group failed silently without a sort list
+
+**Files:** `src/c4group/C4Group.cpp`
+
+### Motivation
+
+`AppendEntry2StdFile` resorts a child group whenever its entry name differs
+from the file backing it on disk — which is every child group added under a
+name of its own, so every `Add(directory, name)` and every nested group in a
+pack. It copies the group aside, opens the copy, and calls
+`SortByList(C4Group_SortList, entry->FileName)`, treating `false` as fatal.
+
+`SortByList` returns `false` for exactly one reason: no list was passed. It has
+no other failure path. So a program that never called `C4Group_SetSortList()`
+cannot write a group holding a renamed child at all — `Save` aborts, `Close`
+returns false, and `Clear` resets the error string on the way out, so
+`GetError()` is empty afterwards. Same silent shape as the empty archives in
+[4](#4-d16b2b3d0--c4group-silently-produced-empty-archives), and for the same
+underlying reason: a write path that reports failure only through a return
+value nobody is positioned to see.
+
+Only `C4Application` and `C4GroupMain` set a sort list, so the engine and
+`c4group` never meet this. The first thing that did was the unit test added in
+`c0c6d8639` — the defect was found the first time C4Group was driven as a
+library rather than as part of a program that knows to configure it.
+
+### Technical effect
+
+The resort is skipped when there is no sort list, which also drops a
+copy-open-erase round trip that could not have changed anything. The `Error`
+call stays for a `SortByList` that fails for a reason that does not exist yet.
+
+### Risk
+
+None for the engine or `c4group`: both set a list, so the condition is true
+where it was true before and the branch is unchanged. Verified by repacking all
+twelve game groups and running `Movement.ocs` against the result.
+
+---
+
+## 27. `443690c41` — the CMake floor was below what CMake still supports
+
+**Files:** `CMakeLists.txt`, `cmake/DeployQt.cmake`
+
+### Motivation
+
+`cmake_minimum_required (VERSION 3.5.1)` sat one patch version above the
+compatibility CMake 4.0 removed outright, and every configure on a current
+CMake said so:
+
+    CMake Warning (deprecated) at CMakeLists.txt:14 (cmake_minimum_required):
+      Compatibility with CMake < 3.10 will be removed from a future version of
+      CMake.
+
+Two blocks existed only for versions below that floor: a `try_compile` wrapper
+for pre-3.8 (CMP0067), carrying a comment asking to be deleted at exactly this
+bump, and an `if(POLICY CMP0069)` guard whose else branch warned that CMake was
+too old for IPO. `cmake/DeployQt.cmake` had a third, a warning about MSVC 2015
+needing CMake 3.6.
+
+### Technical effect
+
+The floor moves to 3.10, which sets both policies to NEW by itself, and all
+three workarounds go. The IPO check now runs unconditionally. Why 3.10 and not
+higher is ADR-022.
+
+### Risk
+
+None reachable. 3.10 is from 2017 and older than the CMake on all three
+development machines and all three CI runners. The unrelated CMP0071 policy
+warning on the autogen path is untouched and still appears.
+
+---
+
+## 28. `013d76873` — `Movement.ocs` test 3 asserted a pre-2019 rock position
+
+**Files:** `planet/Tests.ocf/Movement.ocs/Script.c`, `.github/workflows/build.yml`
+
+### Motivation
+
+The scenario's third test launches a rock diagonally at high speed and asserted
+`GetX() > 380`. It lands at 372 or 374 and has for as long as anyone here has
+run it, on all three platforms.
+
+The history says which side is wrong. The test was added 2019-03-13
+(`3fa5d8beb`); on 2019-06-22 the same author merged `0315ea6ef`, *Improved
+movement code*, whose own message reads: "This also slightly changes how objects
+with high velocity behave when colliding with the landscape, which may break
+scenarios that rely on this specific behaviour." Test 3 is a rock thrown into
+the landscape at high velocity.
+
+Confirmed by building today's tree with only `C4Movement.cpp` reverted to the
+pre-merge revision: the rock then lands at `[482, 157]` and test 3 passes —
+while test 2 fails, its clonk stopping at x = 327 rather than 394. The merge
+moved both tests; only test 3 was left behind.
+
+### Technical effect
+
+The assertion becomes `Inside(GetX(), 360, 390)`, and the CI pin for the
+scenario drops from 1 expected failure to 0.
+
+A range rather than a corrected bound, because **a scenario run is not
+reproducible**. `RandomSeed = time(nullptr)` for a local game
+(`src/game/C4Game.cpp:341`), and the seed reaches this result: twenty runs
+produced exactly two outcomes, `[372, 157]` and `[374, 158]`, ten each. Ten
+fixed seeds reproduce the same split, and a fixed seed repeats its own outcome
+exactly — so the engine is deterministic and the scenario is not. `360-390`
+holds across both states, stays clear of the launch position at 320 and of the
+pre-2019 result at 482, and leaves margin for the two platforms sampled once
+each.
+
+That variance is a fact about the whole suite, not about this test: any
+scenario assertion on a position needs a range, and any position that
+reproduced twice is not thereby established.
+
+### Risk
+
+The scenario is content, not engine, so the blast radius is one test. The
+remaining risk is the range being wrong on a platform where the two states
+differ from the two seen here — which is why the margin is twelve pixels rather
+than two.
+
+---
+
 ## Not addressed
 
 Known, deliberately left alone:
@@ -1126,6 +1295,21 @@ shipped executables.
 
 All three also build and pass on Linux/GCC 16 — **72 of 72**, the same set as
 macOS.
+
+`c0c6d8639` added five `C4GroupTest` cases to the `tests` binary — the first
+coverage the group format has ever had, which takes that binary to 20 and the
+suite to **101**. C4Group.cpp is already in libmisc, so it needed no build
+change. They are round trips rather than assertions about internals, because
+both defects this class has had were invisible from the inside: one produced
+empty archives, the other reads a dead stack buffer. Neither would fail these
+tests directly — the first is fixed, and the second needs a sanitizer — but the
+tests found a third one on the way in, [26](#26-5a34e6eef--writing-a-group-failed-silently-without-a-sort-list).
+
+`0776ab86f` added two **disabled** tests to `StdFileTest`, stating what
+`MakeTempFilename` does not promise: called twice on the same base name it
+hands out the same name twice, which is the race behind ADR-019. gtest reports
+`YOU HAVE 2 DISABLED TESTS` after every run, so the count of known-broken
+things stays somewhere a person reads, and a fix has something to turn green.
 
 A fourth target, `determinism`, was added in `a81cd4e97`: 24 tests over
 `C4Real` and `C4Random`, the two units gameplay reproducibility rests on. That

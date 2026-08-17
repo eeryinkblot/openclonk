@@ -277,13 +277,20 @@ summary:
 
 ```
 * 3 tests total
-1 tests failed
+0 tests failed
 0 tests skipped
 ```
 
-That one failure is real and expected for now: `Movement.ocs` test 3 asserts a rock
-position no platform produces (issue #35). CI reports the counts but does not gate on
-them until that is settled.
+`Movement.ocs` is green since #35 was settled. CI runs five scenarios and gates on a
+pinned failure count per scenario; only `ObjectInteractionMenu.ocs` is non-zero (14,
+issue #51).
+
+**A scenario run is not reproducible across runs.** `RandomSeed = time(nullptr)`
+for a local game (`src/game/C4Game.cpp:341`), and results do depend on it: the
+rock in `Movement.ocs` test 3 lands at either `[372, 157]` or `[374, 158]`, ten
+of each over twenty runs. Same seed, same result — the engine is deterministic,
+the seed is not. Assertions in these scenarios therefore need ranges, and a
+position that reproduces twice is not evidence that it always will.
 
 On Windows the log is `%APPDATA%\OpenClonk\OpenClonk.log`. The engine finds its data
 next to the executable, so pack and stage first — symlinks need a privilege the build
