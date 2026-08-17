@@ -1574,13 +1574,16 @@ bool C4Group::AddEntryOnDisk(const char *filename,
 	// Do not process yourself
 	if (ItemIdentical(filename, GetName())) return true;
 
+	// Outlives the block below on purpose: for a directory, filename is pointed
+	// at this buffer and read again by everything after it.
+	char temp_filename[_MAX_PATH_LEN];
+
 	// File is a directory: copy to temp path, pack, and add packed file
 	if (DirectoryExists(filename))
 	{
 		// Ignore
 		if (C4Group_TestIgnore(filename)) return true;
 		// Temp filename
-		char temp_filename[_MAX_PATH_LEN];
 		if (C4Group_TempPath[0]) { SCopy(C4Group_TempPath, temp_filename, _MAX_PATH); SAppend(GetFilename(filename),temp_filename, _MAX_PATH); }
 		else SCopy(filename, temp_filename, _MAX_PATH);
 		MakeTempFilename(temp_filename);
