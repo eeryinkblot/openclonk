@@ -187,7 +187,7 @@ jobs:
       # and ran 0 of its assertions.
       # Runs all five scenarios that contain assertions, not just Movement.ocs.
       # The other 25 under Tests.ocf hold no doTest() at all, so this is the
-      # whole suite: 906 executed assertions against the 7 this step used to
+      # whole suite: 912 executed assertions against the 7 this step used to
       # cover. See #36.
       #
       # Polls for the harness's completion line instead of sleeping a fixed 90
@@ -298,6 +298,83 @@ jobs:
           done
 
           exit $status
+
+  # The only thing that loads the 69 real game scenarios -- Missions, Worlds,
+  # Arena, Parkour, Defense, Tutorials. The suite above runs the five under
+  # Tests.ocf that carry assertions; a script error introduced in a mission is
+  # invisible to it, and was invisible to everything until this job existed.
+  #
+  # tests/start_all_scenarios.rs was written for exactly this in 2018 and then
+  # started by nobody, so it never gated: it printed the counts it captured and
+  # exited 0 whatever they were. --expect and tests/scenario-lint-expected.txt
+  # are what make it a check rather than a report. #52.
+  #
+  # Its own job rather than a step on `headless` because it needs the planet
+  # tree unpacked, and that job stages the packed groups for the scenario
+  # suite. It builds openclonk-server again, which costs about six minutes of
+  # wall clock in parallel with the other jobs, and skips packing entirely.
+  scenario-lint:
+    name: Content lint — every scenario
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libpng-dev libjpeg-dev libfreetype-dev zlib1g-dev \
+            libcurl4-openssl-dev libminiupnpc-dev
+
+      - name: Build the engine
+        run: |
+          jobs=$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 2)
+          cmake -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo -DHEADLESS_ONLY=ON .
+          cmake --build build --target openclonk-server --parallel "$jobs"
+
+      # The 2018 script carries a cargo-script header. cargo-script has been
+      # unmaintained since and does not install on a current toolchain, so
+      # tests/Cargo.toml states the same dependencies the ordinary way and a
+      # committed Cargo.lock pins what they resolve to. The runner image ships
+      # a Rust toolchain, so there is nothing to install.
+      - name: Build the lint
+        run: cargo build --release --manifest-path tests/Cargo.toml
+
+      # Unpacked, and its own directory. C4Reloc::Init() looks for `planet`
+      # next to the executable, so the engine gets a copy of itself with a
+      # symlink beside it rather than a second staging inside build/.
+      #
+      # Unpacked because Experimental.ocd, Experimental.ocf, Tests.ocf and
+      # Issues.ocf are deliberately not in OC_C4GROUPS -- they are development
+      # content and do not ship -- and two scenarios need them. CableCars.ocs
+      # wants a definition nested inside *another scenario* in Experimental.ocf,
+      # so reproducing that with symlinks onto a packed tree means rebuilding
+      # the source tree piece by piece. Packing changes nothing about script
+      # linking: verified, the 97 scenarios that can run either way report
+      # identical counts.
+      - name: Stage the unpacked planet tree
+        run: |
+          mkdir -p lintroot
+          cp build/openclonk-server lintroot/
+          ln -s "$PWD/planet" lintroot/planet
+
+      # Every scenario has a pinned warning and error count, and any deviation
+      # fails -- in both directions, for the same reason the scenario suite
+      # pins its failure counts. Seven of the 99 are not clean and none has
+      # been diagnosed; ScriptError1.ocs is deliberate and is why "fail on any
+      # error" would be the wrong rule.
+      #
+      # No stdin dance here: the tool opens a pipe to the engine itself and
+      # closes it to shut each scenario down, which is what the `tail -f`
+      # workaround in the suite above imitates.
+      - name: Run the lint
+        run: |
+          cd lintroot
+          "$GITHUB_WORKSPACE/tests/target/release/start_all_scenarios" \
+            -p ../planet -e ./openclonk-server \
+            -x ../tests/scenario-lint-expected.txt
 
   # The first job to build a client anywhere. Everything above builds
   # openclonk-server; C4Window, C4DrawGL, the startup dialogs, src/editor/ and
