@@ -41,6 +41,38 @@ five, and the `awk '/tests total/'` this workflow used matches only
 reported 0 tests" and tripped the guard. `[Pass]` and `[Fail]` come from the
 shared `doTest()` helper and are uniform, so the step counts those.
 
+### `tests/start_all_scenarios.rs` is not redundant with this
+
+Written in 2018 by Julius Michaelis, one commit, untouched since. It is easy to
+mistake for a worse version of the scenario suite above, and it is not — it does
+a different job:
+
+| | CI scenario suite | `start_all_scenarios.rs` |
+| --- | --- | --- |
+| Scenarios | the 5 under `Tests.ocf` with assertions | **all 99** `.ocs` under `planet/` |
+| Checks | `[Pass]`/`[Fail]` from `doTest()` | `C4AulScriptEngine linked - N lines, N warnings, N errors` |
+| Is | an assertion runner | a **content lint** |
+
+So it covers the 69 real game scenarios — Missions, Worlds, Arena, Parkour,
+Defense, Tutorials — that nothing else loads at all. A script error introduced in
+a mission is invisible to everything in this workflow.
+
+What it does *not* do is gate. It `println!`s the counts it captures and never
+inspects them; the only `panic!` is for failing to spawn the engine, so it exits
+0 whatever it finds. A human has to read the output. It also passes a bare
+`Test.ocp`, so the assertions inside `Tests.ocf` never run under it — which is
+where the "reports success for scenarios whose assertions never ran" note comes
+from, and is a fair criticism of it as an *assertion* runner, not as a lint.
+
+Note the irony recorded here rather than quietly fixed: the
+`variable_out_of_scope` warning in `LiquidContainer.ocs` (95a1d8094) is exactly
+what this tool was built to surface. It would have found it in 2018 if anyone
+had run it.
+
+Reviving it means dealing with `run-cargo-script`, which is abandoned —
+`rust-script` is the successor — and deciding whether the counts should fail the
+run. Worth doing; it is the only thing that would ever look at most of the game.
+
 The two runners agree assertion for assertion, failures included — 290/168/120
 passing, 14 failing in `ObjectInteractionMenu` and 1 in `Movement` on both. That
 is C4Real determinism across clang and GCC, over 906 assertions rather than the
@@ -173,6 +205,12 @@ when reading stdin fails — the intended shutdown path, which
 machine ever ticks. See [ADR-009](decisions.md#adr-009--hold-stdin-open-in-ci-instead-of-letting-the-engine-self-terminate).
 
 ## What it does not cover
+
+- **The other 69 scenarios.** The suite covers the five under `Tests.ocf` that
+  hold assertions. `planet/` contains **99** `.ocs` in total — Missions, Worlds,
+  Arena, Parkour, Defense, Tutorials — and no automation loads any of them, so a
+  script error in real game content is caught by nobody. That is what
+  `tests/start_all_scenarios.rs` was written for; see the note below.
 
 - **Assertions that fail on purpose.** `Movement.ocs` (#35) and
   `ObjectInteractionMenu.ocs` (#51) report their failures as warnings rather
