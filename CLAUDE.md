@@ -7,6 +7,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 `eeryinkblot/openclonk`, carrying macOS / Apple Silicon fixes on top of upstream
 `openclonk/openclonk`. Remotes: `origin` is the fork, `upstream` is the project.
 
+**Start with [`ROADMAP.md`](ROADMAP.md)** if you are picking work up rather than
+answering a specific question. It carries the ordered plan and what each step is
+waiting on.
+
 Reference material under `fork-notes/`, worth consulting when it is relevant rather
 than up front:
 
@@ -21,7 +25,8 @@ than up front:
 `decisions.md` is the one to reach for before reworking something that already looks
 odd — several of the alternatives rejected there are the obvious first idea.
 
-`CLAUDE.md` and `fork-notes/` are fork-local and must never end up in a PR branch.
+`CLAUDE.md`, `ROADMAP.md` and `fork-notes/` are fork-local and must never end up in
+a PR branch.
 Build PR branches by cherry-picking onto `upstream/master`, never by branching off
 this `master`.
 

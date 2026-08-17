@@ -11,8 +11,8 @@ suits, rather than an archaeology project.
 
 Update it whenever you add a commit that could plausibly go upstream.
 
-**This file is fork-local and must never appear in a PR branch.** So is
-`CLAUDE.md` and everything else under `fork-notes/`.
+**This file is fork-local and must never appear in a PR branch.** So are
+`CLAUDE.md`, `ROADMAP.md` and everything else under `fork-notes/`.
 
 ## The rule that keeps it separable
 
@@ -30,7 +30,8 @@ git push -u origin <pr-branch>
 Guard before opening the PR:
 
 ```sh
-git diff --name-only upstream/master..HEAD | grep -E '^(CLAUDE\.md|fork-notes/)' \
+git diff --name-only upstream/master..HEAD \
+  | grep -E '^(CLAUDE\.md|ROADMAP\.md|fork-notes/)' \
   && echo "STOP: fork-local files in this branch"
 ```
 
@@ -363,6 +364,7 @@ Consider splitting `6333d5498` off into its own PR; it is clean, while
 | Commits | Files |
 | --- | --- |
 | `4d1e0ba08`, `18a459494`, `660a1f8f1`, `41c1b6f30`, `c2336894d` | `CLAUDE.md` |
+| — | `ROADMAP.md` |
 | — | `fork-notes/` |
 
 Both files are fork-local by policy, so the `fork-notes/` row stays a blanket
