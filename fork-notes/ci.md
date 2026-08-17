@@ -153,6 +153,28 @@ machine ever ticks. See [ADR-009](decisions.md#adr-009--hold-stdin-open-in-ci-in
 
 ## What it does not cover
 
+- **The scenario suite, almost entirely.** One scenario runs, `Movement.ocs`,
+  which holds 7 of the 906 assertions the suite executes. They are not spread
+  thinly over 29 unrun scenarios, as #36 assumed: they live in **five** files
+  and the four that never run hold 899 of them. All four were run by hand for
+  the first time on the Linux machine —
+
+  | Scenario | Assertions | Result |
+  | --- | --- | --- |
+  | `Stackable.ocs` | 290 | pass |
+  | `Producers.ocs` | 168 | pass |
+  | `LiquidContainer.ocs` | 120 | pass |
+  | `ObjectInteractionMenu.ocs` | 328 | **14 fail** (#51) |
+
+  Three of four green, and one real failure nobody had seen. Closing this is
+  four `run:` steps, not thirty. #36.
+
+  **Do not parse the summary line to do it.** Four different wordings exist
+  across the five scenarios, and the `awk '/tests total/'` this workflow uses
+  matches only `Movement.ocs`; the other four would score as "the harness ran
+  but reported 0 tests". Count `[Pass]` and `[Fail]` instead — those come from
+  the shared `doTest()` helper and are uniform.
+
 - **The rest of Windows.** Only `c4group` is built there. `HEADLESS_ONLY`, the
   full GUI build, the unit tests and a launched engine have since all been
   verified by hand on a Windows machine — see
