@@ -43,28 +43,150 @@ use wait_timeout::ChildExt;
 
 fn main() {
 	let matches = clap_app!(myapp =>
-		(version: "0.3")
+		(version: "0.4")
 		(author: "Julius Michaelis <jcoc@liftm.de>")
 		(about: "Test-run all scenarios, grep for script errors")
 		(@arg planet: -p --planet +takes_value "Path to planet directory containing game data")
 		(@arg openclonk: -e --openclonk +takes_value "Path to headless executable")
+		(@arg expect: -x --expect +takes_value "Pinned counts to check against; exit 1 on any deviation")
 		(@arg verbose: -v --verbose ... "Verbosity")
 	).get_matches();
 	let oc = matches.value_of("openclonk").unwrap_or("./openclonk-server");
 	let planet = matches.value_of("planet").unwrap_or("./planet");
 	let verbosity = matches.occurrences_of("verbose");
 
+	let mut results : Vec<(String, Option<Counts>)> = Vec::new();
 	for entry in WalkDir::new(planet).into_iter()
 		.filter_map(|e| e.ok())
 		.filter(|e| e.file_name().to_str()
 			.map_or(false, |s| s.ends_with(".ocs")))
 	{
 		let path = entry.path();
-		test(path, oc, verbosity);
+		let counts = test(path, oc, verbosity);
+		results.push((relative_to(path, planet), counts));
+	}
+
+	match matches.value_of("expect") {
+		None => {
+			println!("{} scenarios run. No --expect given, so nothing was checked.", results.len());
+		},
+		Some(expectations) => {
+			if !check(&results, expectations) {
+				std::process::exit(1);
+			}
+		},
+	};
+}
+
+/// The engine writes "1 warning" but "0 warnings"; match it.
+fn plural(n : u32) -> &'static str {
+	if n == 1 { "" } else { "s" }
+}
+
+/// Warnings and errors reported by `C4AulScriptEngine linked`.
+#[derive(PartialEq, Eq, Clone, Copy)]
+struct Counts {
+	warnings : u32,
+	errors : u32,
+}
+
+/// Scenario path as it is written in the expectations file: relative to the
+/// planet directory, so the file does not depend on how this was invoked.
+fn relative_to(scen : &Path, planet : &str) -> String {
+	let full = scen.to_string_lossy().replace('\\', "/");
+	let base = planet.replace('\\', "/");
+	let base = base.trim_end_matches('/');
+	if full.starts_with(base) {
+		full[base.len()..].trim_start_matches('/').to_string()
+	} else {
+		full
 	}
 }
 
-fn test(scen : &Path, oc : &str, verbosity : u64) {
+/// Read `<warnings> <errors> <path>` lines, skipping blanks and # comments.
+fn read_expectations(path : &str) -> Vec<(String, Counts)> {
+	let mut file = match std::fs::File::open(path) {
+		Err(why) => panic!("cannot read {}: {}", path, why.description()),
+		Ok(file) => file,
+	};
+	let mut text = String::new();
+	file.read_to_string(&mut text).expect("cannot read expectations");
+
+	let mut out = Vec::new();
+	for line in text.lines() {
+		let line = line.trim();
+		if line.is_empty() || line.starts_with('#') {
+			continue;
+		}
+		let fields : Vec<&str> = line.splitn(3, char::is_whitespace)
+			.map(|f| f.trim())
+			.filter(|f| !f.is_empty())
+			.collect();
+		if fields.len() != 3 {
+			panic!("malformed line in {}: {}", path, line);
+		}
+		let counts = Counts {
+			warnings: fields[0].parse().expect("warning count is not a number"),
+			errors: fields[1].parse().expect("error count is not a number"),
+		};
+		out.push((fields[2].to_string(), counts));
+	}
+	out
+}
+
+/// Compare what was measured against what is pinned. Every deviation is a
+/// failure, in both directions: a count that grew is a regression, and a count
+/// that shrank means someone fixed something and has to bring the pin down
+/// with it, or the pin quietly stops protecting anything.
+fn check(results : &[(String, Option<Counts>)], expectations : &str) -> bool {
+	let expected = read_expectations(expectations);
+	let mut ok = true;
+
+	for &(ref scen, counts) in results {
+		match expected.iter().find(|&&(ref e, _)| e == scen) {
+			None => {
+				println!("FAIL {}: not in {}. Add it with the counts it reports.",
+					scen, expectations);
+				ok = false;
+			},
+			Some(&(_, want)) => match counts {
+				None => {
+					println!("FAIL {}: reported nothing. The engine did not get far \
+enough to link its scripts -- look for a missing object group.", scen);
+					ok = false;
+				},
+				Some(got) => if got != want {
+					println!("FAIL {}: {} warning{}, {} error{}; pinned at {} and {}.{}",
+						scen,
+						got.warnings, plural(got.warnings),
+						got.errors, plural(got.errors),
+						want.warnings, want.errors,
+						if got.warnings <= want.warnings && got.errors <= want.errors {
+							" Something was fixed -- lower the pin in the same commit."
+						} else {
+							""
+						});
+					ok = false;
+				},
+			},
+		};
+	}
+
+	for &(ref scen, _) in expected.iter() {
+		if !results.iter().any(|&(ref r, _)| r == scen) {
+			println!("FAIL {}: pinned in {} but no such scenario was found.",
+				scen, expectations);
+			ok = false;
+		}
+	}
+
+	if ok {
+		println!("{} scenarios, all matching {}.", results.len(), expectations);
+	}
+	ok
+}
+
+fn test(scen : &Path, oc : &str, verbosity : u64) -> Option<Counts> {
 
 	if verbosity >= 1 {
 		println!("Testing {}", scen.display());
@@ -77,8 +199,13 @@ fn test(scen : &Path, oc : &str, verbosity : u64) {
 
 	// [07:45:04] C4AulScriptEngine linked - 86722 lines, 0 warnings, 0 errors
 	let status_re = Regex::new(r"^\[\d\d:\d\d:\d\d\] C4AulScriptEngine linked - (.*)\n$").unwrap();
+	// ... of which this picks out the two numbers that are worth pinning.
+	// Singular and plural both occur: "1 warning" but "0 warnings".
+	let counts_re = Regex::new(r"(\d+) warnings?, (\d+) errors?").unwrap();
 	// [07:45:08] Game started.
 	let load_done_re = Regex::new(r"^\[\d\d:\d\d:\d\d\] (Game started|Game cleared).\n$").unwrap();
+
+	let mut counts = None;
 
 	let mut process = match Command::new(oc)
         .arg("--language=US")
@@ -110,7 +237,12 @@ fn test(scen : &Path, oc : &str, verbosity : u64) {
 				match status_re.captures(&msg) {
 					None => {},
 					Some(caps) => {
-						println!("{}: {}", scen.display(), caps.get(1).unwrap().as_str())
+						let status = caps.get(1).unwrap().as_str();
+						println!("{}: {}", scen.display(), status);
+						counts = counts_re.captures(status).map(|c| Counts {
+							warnings: c.get(1).unwrap().as_str().parse().unwrap(),
+							errors: c.get(2).unwrap().as_str().parse().unwrap(),
+						});
 					},
 				};
 				match load_done_re.find(&msg) {
@@ -154,9 +286,10 @@ fn test(scen : &Path, oc : &str, verbosity : u64) {
 		}
 	};
 	if verbosity >= 1 {
-		println!("exited with: {}", status_code.map(|c| c.to_string()).as_ref().map(|x| &**x).unwrap_or("[no code]")) 
+		println!("exited with: {}", status_code.map(|c| c.to_string()).as_ref().map(|x| &**x).unwrap_or("[no code]"))
 	}
 
+	counts
 }
 
 fn cont_read(pipe : std::process::ChildStdout, print : bool) -> std::sync::mpsc::Receiver<String> {

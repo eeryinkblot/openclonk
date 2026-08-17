@@ -1,0 +1,139 @@
+# Expected script-linking counts for every scenario under planet/.
+#
+# Format: <warnings> <errors> <path relative to the planet directory>
+#
+# tests/start_all_scenarios.rs runs each scenario headless and reads the
+# "C4AulScriptEngine linked - N lines, N warnings, N errors" line it prints.
+# Pointed at this file with --expect, it fails on any deviation in either
+# direction: a count that grew is a regression, and a count that shrank means
+# someone fixed something and has to lower the pin in the same commit, or the
+# pin quietly stops protecting anything. A scenario missing from this file
+# fails too, so new content cannot arrive unnoticed.
+#
+# Seven of the 99 are not clean. None has been diagnosed; they are pinned so
+# they cannot grow, not because they are acceptable:
+#
+#   Tests.ocf/ScriptError1.ocs        2 errors on purpose. The scenario exists
+#                                     to produce them, which is why "fail on
+#                                     any error" would be the wrong rule.
+#   Tests.ocf/ColorfulLights.ocs      10 warnings: nine redeclarations of
+#                                     globals that Script.c:10-11 and the
+#                                     generated Objects.c:3 both declare, plus
+#                                     one suspicious_assignment at
+#                                     Script.c:24, which is a deliberate
+#                                     assignment inside an if.
+#   Tests.ocf/SkeletonAppend.ocs      2 warnings, one a FindObject call still
+#                                     using the Clonk 4 signature.
+#   Tests.ocf/CableCars.ocs           2 warnings.
+#   Tests.ocf/LiquidSystem.ocs        2 warnings.
+#   Experimental.ocf/CableLorrys.ocs  2 warnings.
+#   Tests.ocf/Benchmarks.ocs          1 warning.
+#
+# Run against an UNPACKED planet tree. Packing changes nothing about script
+# linking -- verified, the shared 97 scenarios report identically either way --
+# but Experimental.ocd, Experimental.ocf, Tests.ocf and Issues.ocf are
+# deliberately not in OC_C4GROUPS, and CableCars.ocs needs a definition nested
+# inside another scenario in Experimental.ocf. Against a packed tree those two
+# scenarios cannot start at all.
+#
+# Measured 2026-08-17 on Linux/GCC 16.
+
+0 0 Arena.ocf/DarkMine.ocs
+0 0 Arena.ocf/FlintBrawl.ocs
+0 0 Arena.ocf/FrozenFortress.ocs
+0 0 Arena.ocf/Hideout.ocs
+0 0 Arena.ocf/HotIce.ocs
+0 0 Arena.ocf/IAmRich.ocs
+0 0 Arena.ocf/MeltingCastle.ocs
+0 0 Arena.ocf/MoltenMonarch.ocs
+0 0 Arena.ocf/Overcast.ocs
+0 0 Arena.ocf/RockBottom.ocs
+0 0 Arena.ocf/Ruins.ocs
+0 0 Arena.ocf/ScorchedGardens.ocs
+0 0 Arena.ocf/ThunderousSkies.ocs
+0 0 Defense.ocf/FightForGidl.ocs
+0 0 Defense.ocf/KingOfTheHill.ocs
+0 0 Defense.ocf/Windmill.ocs
+2 0 Experimental.ocf/CableLorrys.ocs
+0 0 Experimental.ocf/Header.ocs
+0 0 Experimental.ocf/OCTier.ocs
+0 0 Experimental.ocf/Raiders.ocs
+0 0 Experimental.ocf/Shark.ocs
+0 0 Issues.ocf/issue1060.ocs
+0 0 Issues.ocf/issue1263.ocs
+0 0 Issues.ocf/issue1502.ocs
+0 0 Issues.ocf/issue973.ocs
+0 0 Missions.ocf/AcidDrilling.ocs
+0 0 Missions.ocf/Crash.ocs
+0 0 Missions.ocf/DarkCastle.ocs
+0 0 Missions.ocf/DeadlyGrotto.ocs
+0 0 Missions.ocf/DeepSeaMining.ocs
+0 0 Missions.ocf/FrostySummit.ocs
+0 0 Missions.ocf/GoldenMountain.ocs
+0 0 Missions.ocf/MineRescue.ocs
+0 0 Missions.ocf/MtBrame.ocs
+0 0 Missions.ocf/Raid.ocs
+0 0 Missions.ocf/SPLIT.ocs
+0 0 Missions.ocf/Skylands.ocs
+0 0 Missions.ocf/TreasureHunt.ocs
+0 0 Parkour.ocf/Aerobatics.ocs
+0 0 Parkour.ocf/Boomrace.ocs
+0 0 Parkour.ocf/Boomshire.ocs
+0 0 Parkour.ocf/BristleRidge.ocs
+0 0 Parkour.ocf/Cavern.ocs
+0 0 Parkour.ocf/Maze.ocs
+0 0 Parkour.ocf/ShiverPeak.ocs
+0 0 Parkour.ocf/VolcanoEscape.ocs
+0 0 Parkour.ocf/VolcanoEscapeEx.ocs
+0 0 System.ocg/Template.ocg/DefaultWorld.ocs
+0 0 System.ocg/Template.ocg/Empty.ocs
+0 0 Tests.ocf/AI.ocs
+1 0 Tests.ocf/Benchmarks.ocs
+2 0 Tests.ocf/CableCars.ocs
+0 0 Tests.ocf/ClonkAttachments.ocs
+10 0 Tests.ocf/ColorfulLights.ocs
+0 0 Tests.ocf/ExplodeContainer.ocs
+0 0 Tests.ocf/FileSystem.ocs
+0 0 Tests.ocf/IncludeTest.ocs
+0 0 Tests.ocf/KillTracing.ocs
+0 0 Tests.ocf/LiquidContainer.ocs
+2 0 Tests.ocf/LiquidSystem.ocs
+0 0 Tests.ocf/LocalDefsOnly.ocs
+0 0 Tests.ocf/MenuTest.ocs
+0 0 Tests.ocf/Minimal.ocs
+0 0 Tests.ocf/Movement.ocs
+0 0 Tests.ocf/ObjectInteractionMenu.ocs
+0 0 Tests.ocf/OneMillionParticles.ocs
+0 0 Tests.ocf/OverlayTest.ocs
+0 0 Tests.ocf/PXSAndSmoke.ocs
+0 0 Tests.ocf/Parameters.ocs
+0 0 Tests.ocf/PermeableSolidMasks.ocs
+0 0 Tests.ocf/PowerSystem.ocs
+0 0 Tests.ocf/Producers.ocs
+0 0 Tests.ocf/Random.ocs
+0 0 Tests.ocf/RopeTest.ocs
+0 2 Tests.ocf/ScriptError1.ocs
+2 0 Tests.ocf/SkeletonAppend.ocs
+0 0 Tests.ocf/SkeletonInclude.ocs
+0 0 Tests.ocf/Stackable.ocs
+0 0 Tests.ocf/Underwater.ocs
+0 0 Tutorials.ocf/Sandbox.ocs
+0 0 Tutorials.ocf/Tutorial01.ocs
+0 0 Tutorials.ocf/Tutorial02.ocs
+0 0 Tutorials.ocf/Tutorial03.ocs
+0 0 Tutorials.ocf/Tutorial04.ocs
+0 0 Tutorials.ocf/Tutorial05.ocs
+0 0 Tutorials.ocf/Tutorial06.ocs
+0 0 Tutorials.ocf/Tutorial07.ocs
+0 0 Tutorials.ocf/Tutorial08.ocs
+0 0 Worlds.ocf/AcidGoldMine.ocs
+0 0 Worlds.ocf/AcidRift.ocs
+0 0 Worlds.ocf/Chine.ocs
+0 0 Worlds.ocf/Clonkomotive.ocs
+0 0 Worlds.ocf/FloodedVeins.ocs
+0 0 Worlds.ocf/GemGrabbers.ocs
+0 0 Worlds.ocf/GoldRush.ocs
+0 0 Worlds.ocf/HorridHighway.ocs
+0 0 Worlds.ocf/IronPeak.ocs
+0 0 Worlds.ocf/Krakatoa.ocs
+0 0 Worlds.ocf/RapidRefining.ocs
