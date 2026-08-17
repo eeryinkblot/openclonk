@@ -465,7 +465,7 @@ platform satisfies.
   it**, so two c4group processes in the same directory pick the same temporary
   file. Fixed in `CMakeLists.txt` by chaining each group onto the previous one,
   which serialises packing under every generator. Why not at the source: see
-  decisions.md.
+  decisions.md, and #47 for the defect itself.
 
 - **A stale `GTEST_INCLUDE_DIR` survives being given the sources later.** On any
   machine with a googletest *package* installed — Arch has `gtest` 1.17 in

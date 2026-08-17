@@ -621,6 +621,12 @@ Recorded rather than repaired, so the next person meets a decision instead of a
 mystery — and if `MakeTempFilename` is ever fixed properly, this chaining can go
 away with it.
 
+Tracked as **#47** since this was written, so the root cause is no longer
+findable only through a fork-local ADR and a closed issue. A third repair the
+ADR did not cost — `mkstemp`/`GetTempFileName` per platform, with the
+directory-creating caller split into its own helper — is probably the real
+answer and is recorded there.
+
 ## ADR-020 — Widen the mock macros instead of pinning googletest harder
 
 **Context.** googletest 1.10.0 stopped compiling on GCC 15 and later, which have
