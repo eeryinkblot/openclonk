@@ -161,7 +161,8 @@ machine ever ticks. See [ADR-009](decisions.md#adr-009--hold-stdin-open-in-ci-in
   rather than an open question. Until that happens it is one machine, once.
 - **The Qt editor on macOS.** Covered on Linux by `linux-client` now. macOS has
   no Qt5 from Homebrew, so `src/editor/` is still compiled by nothing there, and
-  anything platform-specific in it is unguarded. #22.
+  anything platform-specific in it is unguarded — including the editor branch of
+  the mouse handler #8 deliberately left alone. #46.
 - **Actually running the GUI.** `macos-app` builds and inspects the bundle but
   never launches it, and no job builds a client on Linux at all.
 

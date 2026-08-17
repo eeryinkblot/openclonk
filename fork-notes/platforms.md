@@ -29,12 +29,13 @@ change, and four fixes on Linux — none of them in the engine either.
 What it does *not* mean, since the table is easy to over-read:
 
 - **The Qt editor is built and run on two of the three.** macOS has no Qt5 from
-  Homebrew, so `src/editor/` is compiled by nothing there (#22).
+  Homebrew, so `src/editor/` is compiled by nothing there (#46).
 - **`mape` is built on one and run on none.** It needs GTK3, so it does not
-  exist on macOS or Windows, and no CI job compiles it (#39).
+  exist on macOS or Windows; CI compiles it on Linux since 3f0b9374d.
 - **CI covers less than the machines do.** `HEADLESS_ONLY` on two runners,
-  `C4GROUP_TOOL_ONLY` on Windows, and no client build anywhere. Everything else
-  in this table is one machine, by hand, once.
+  `C4GROUP_TOOL_ONLY` on Windows, and a Linux client build that compiles the
+  editor and `mape` but launches nothing (#45). Everything else in this table is
+  one machine, by hand, once.
 - **A configuration that builds is not a configuration that is exercised.** See
   the `C4GROUP_TOOL_ONLY` note below, where Linux succeeds by accident of where
   its headers live.
@@ -63,13 +64,13 @@ brew install cmake libepoxy openal-soft miniupnpc freealut \
   `Using Audio toolkit: OpenAL` at configure time and
   `OpenAL extensions loaded. Available: AL_EFFECT_REVERB, …` at runtime.
 - **Qt5 is gone from Homebrew**, so `WITH_QT_EDITOR` is off and `src/editor/` is
-  not compiled *on this machine*. It is compiled and run on Windows, where vcpkg
-  still has Qt5 — so editor code paths are no longer untested outright, but
-  anything macOS-specific in them still is. #8 left the editor branch of the
-  mouse handler alone for exactly that reason, and a Windows build says nothing
-  about it.
+  not compiled *on this machine* — and macOS is now the only platform where that
+  is true. It is built and run on Windows and Linux and compiled by CI, so editor
+  code paths are no longer untested outright, but anything macOS-specific in them
+  still is. #8 left the editor branch of the mouse handler alone for exactly that
+  reason, and neither of the other two platforms says anything about it. #46.
 - Unit tests need googletest **sources**, unpacked at
-  `/Users/tk/Repositories/clonk/deps/googletest-release-1.10.0`. See CLAUDE.md.
+  `/Users/tk/Repositories/clonk/deps/googletest-1.14.0`. See CLAUDE.md.
 
 Runtime paths:
 
@@ -415,8 +416,8 @@ landscape-tool toolbars, a log dock mirroring the engine log, and a viewport
 running the scenario at `Frame: 888`, `36 FPS`. All three Qt5 libraries mapped
 into the process. Sound and music play in editor mode too.
 
-So what is left of #22 is macOS — where Qt5 is still gone from Homebrew — and
-CI, which could run it under Xvfb but builds no client to run (#45).
+So what is left is macOS, where Qt5 is still gone from Homebrew (#46). CI
+compiles the editor on Linux now, but does not launch it (#45).
 
 Note the consequence recorded in the Windows section: enabling the editor drops
 `C4ConsoleWin32.cpp` — and its non-Qt equivalents — from the build, so the two
