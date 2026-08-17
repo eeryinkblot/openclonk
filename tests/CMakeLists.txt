@@ -125,6 +125,23 @@ if (GTEST_FOUND AND GMOCK_FOUND)
         "math/StdMeshQuaternionTest.cpp"
         )
 
+    # C4Real and C4Random are the two units gameplay determinism rests on:
+    # clients exchange inputs rather than state, so both have to produce
+    # bit-identical results on every machine in a round. Compiled into the test
+    # target rather than linked from libopenclonk, the way StdMeshMath is, so
+    # the suite stays independent of the engine. libmisc is needed only for the
+    # StdCompiler that C4Real.cpp's CompileFunc references.
+    create_test(determinism
+        SOURCES
+        "../src/lib/C4Real.cpp"
+        "../src/lib/C4Real.h"
+        "../src/lib/C4Random.cpp"
+        "../src/lib/C4Random.h"
+        "math/C4RealTest.cpp"
+        "math/C4RandomTest.cpp"
+        LIBRARIES libmisc
+        )
+
     AUX_SOURCE_DIRECTORY("${CMAKE_CURRENT_LIST_DIR}" TESTS_SOURCES)
     add_executable(tests EXCLUDE_FROM_ALL ${TESTS_SOURCES} ${C4SCRIPT_SOURCES})
     set_property(TARGET "tests" PROPERTY FOLDER "Testing")
