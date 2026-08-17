@@ -171,15 +171,18 @@ then copied forward until it looked settled.
 Verify by running the thing. Nothing here is validated by anyone else and
 upstream's own CI is gone.
 
-## Caveat on this file
+## The tracker, as of 2026-08-17
 
-The issue numbers were taken from the session that produced them, not from a
-fresh query — `gh` stopped answering at the end of it (`HTTP 401` on the GraphQL
-API, then timeouts). Everything referenced here was created or read during that
-session, but if the list has moved since, this file has not.
+Checked against a working `gh` after the login was restored — the caveat this
+section used to carry is gone, and every number on this page matches the
+tracker. Nothing had drifted.
 
-Still true on 2026-08-17: `gh issue list` returns `HTTP 401: Requires
-authentication`. So nothing here has been checked against the tracker, the two
-issues closed today (#35, #44) are closed only in this file, and the C4Group
-sort-list defect found while doing #33 has no issue at all. Run
-`gh auth login -h github.com` before trusting any number on this page.
+Closed since this file was written: **#41**, **#33**, **#35** (auto-closed by
+the push), **#44**, and **#34**, which had been done in `a81cd4e97` and never
+closed. **#53** is new — the C4Group sort-list defect found while writing the
+tests for #33.
+
+**#47** stays open with the two disabled tests attached to it. **#51** stays
+open and keeps its title: 5 of 9 tests fail there, which is the same state the
+CI pin describes as 14 of 328 assertions. Both counts are right; they count
+different things.
