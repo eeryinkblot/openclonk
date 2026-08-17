@@ -519,6 +519,10 @@ global func Test5_CheckPipes(object pipeA, string stateA, object pipeB, string s
 {
 	var functionA, functionB;
 	var passed = true;
+	// Declared here rather than inside the first block: C4Script variables are
+	// function-scoped, so the second block's use of it is legal but earns
+	// "variable 'test' used outside of its declared scope".
+	var test;
 
 	if (pipeA != nil)
 	{
@@ -526,7 +530,7 @@ global func Test5_CheckPipes(object pipeA, string stateA, object pipeB, string s
 		else if (stateA == PIPE_STATE_Drain)   functionA = pipeA.IsDrainPipe;
 		else if (stateA == PIPE_STATE_Neutral) functionA = pipeA.IsNeutralPipe;
 		
-		var test = pipeA->Call(functionA);
+		test = pipeA->Call(functionA);
 		passed &= doTest(Format("Pipe A is a %s/%v pipe? %s", stateA, functionA, "Got %v, expected %v.", test, true));
 	}
 	
