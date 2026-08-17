@@ -11,7 +11,14 @@
 # To redistribute this file separately, substitute the full license texts
 # for the above references.
 
-cmake_minimum_required (VERSION 3.5.1)
+# 3.10 rather than the 3.5.1 this sat at for years: CMake 4.0 removed
+# compatibility with anything below 3.5 outright and warns on everything below
+# 3.10, so the old floor was one patch version above a version that no longer
+# exists. 3.10 is from 2017 and older than the CMake on every machine and
+# runner this builds on. It also makes the CMP0067 (3.8) and CMP0069 (3.9)
+# policies NEW by itself, which is what the two workarounds below used to do by
+# hand.
+cmake_minimum_required (VERSION 3.10)
 
 # Don't allow people to build "Release" builds because there's no reason to do that.
 # Use one of RelWithDebInfo or MinSizeRel instead.
@@ -21,37 +28,6 @@ set(CMAKE_CONFIGURATION_TYPES Debug RelWithDebInfo MinSizeRel CACHE STRING "List
 # symbols or optimizations and thus completely useless.
 if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE RelWithDebInfo)
-endif()
-
-if(POLICY CMP0067)
-	cmake_policy(SET CMP0067 NEW)
-else()
-	# Wrap try_compile such that it correctly passes the standard flags to the
-	# compiler on CMake versions below 3.8. Remove when you update the minimum
-	# required version to 3.8 or later.
-	macro(try_compile)
-		set(_tc_langs)
-		foreach(_tc_lang CXX C)
-			if(DEFINED CMAKE_${_tc_lang}_STANDARD)
-				list(APPEND _tc_langs ${_tc_lang})
-			endif()
-		endforeach()
-		foreach(_tc_lang ${_tc_langs})
-			if (${CMAKE_${_tc_lang}_EXTENSIONS})
-				set(_tc_ext EXTENSION)
-			else()
-				set(_tc_ext STANDARD)
-			endif()
-			set(_backup_${_tc_lang}_flags "${CMAKE_${_tc_lang}_FLAGS}")
-			set(CMAKE_${_tc_lang}_FLAGS "${CMAKE_${_tc_lang}_FLAGS} ${CMAKE_${_tc_lang}${CMAKE_${_tc_lang}_STANDARD}_${_tc_ext}_COMPILE_OPTION}")
-		endforeach()
-
-		_try_compile(${ARGN})
-	
-		foreach(_tc_lang ${_tc_langs})
-			set(CMAKE_${_tc_lang}_FLAGS "${_backup_${_tc_lang}_flags}")
-		endforeach()
-	endmacro()
 endif()
 
 project (openclonk CXX C)
@@ -91,20 +67,14 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Try to enable link-time optimization / link-time code generation /
 # interprocedural optimization for release builds.
-if(POLICY CMP0069)
-	cmake_policy(SET CMP0069 NEW)
-
-	include(CheckIPOSupported)
-	check_ipo_supported(RESULT result OUTPUT output)
-	if(result)
-		foreach(_config MINSIZEREL RELWITHDEBINFO RELEASE)
-			set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_${_config} TRUE)
-		endforeach()
-	else()
-		message(WARNING "IPO is not supported: ${output}")
-	endif()
+include(CheckIPOSupported)
+check_ipo_supported(RESULT result OUTPUT output)
+if(result)
+	foreach(_config MINSIZEREL RELWITHDEBINFO RELEASE)
+		set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_${_config} TRUE)
+	endforeach()
 else()
-	message(WARNING "IPO is not supported because CMake is too old")
+	message(WARNING "IPO is not supported: ${output}")
 endif()
 
 if(MSVC)
