@@ -90,9 +90,22 @@ Note the irony recorded here rather than quietly fixed: the
 what this tool was built to surface. It would have found it in 2018 if anyone
 had run it.
 
-Reviving it means dealing with `run-cargo-script`, which is abandoned —
-`rust-script` is the successor — and deciding whether the counts should fail the
-run. Worth doing; it is the only thing that would ever look at most of the game.
+**It still works.** Built against Rust 1.93 with its 2018 dependencies
+unchanged, in 2.6 seconds, with one deprecation warning — and run over the whole
+tree it reported 97 of 99 scenarios. 93 are clean; `ScriptError1.ocs` has two
+errors on purpose, and `SkeletonAppend.ocs`, `CableLorrys.ocs` and
+`Benchmarks.ocs` have warnings nobody has looked at. One of them is a
+`FindObject` call still using the Clonk 4 signature.
+
+The two that report nothing, `CableCars.ocs` and `LiquidSystem.ocs`, die with
+`Required object file Experimental.ocd not available` — `Experimental.ocf`,
+`Tests.ocf` and `Issues.ocf` are not in `OC_C4GROUPS`, so they are never packed
+and two test scenarios cannot run against a packed tree at all.
+
+So this is not a revival project, it is a tool nobody starts. What it needs is a
+decision about gating — and `ScriptError1.ocs` means a naive "fail on any error"
+would be wrong, so it wants pinned per-scenario counts exactly like the suite
+above. #52.
 
 The two runners agree assertion for assertion, failures included — 290/168/120
 passing, 14 failing in `ObjectInteractionMenu` and 1 in `Movement` on both. That
