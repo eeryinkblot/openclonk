@@ -1,0 +1,35 @@
+# Manifest for tests/start_all_scenarios.rs, the content lint that runs every
+# scenario under planet/ and checks what the script engine says about it.
+#
+# The file carries a `#!/usr/bin/env run-cargo-script` shebang and a cargo-script
+# dependency header from 2018. cargo-script has been unmaintained since then and
+# does not install on a current toolchain, so this manifest states the same
+# dependencies in the ordinary way and `cargo run` works without any helper:
+#
+#     cargo run --release --manifest-path tests/Cargo.toml -- \
+#         -p ../planet -e ./openclonk-server -x ../tests/scenario-lint-expected.txt
+#
+# The dependency versions are the ones the script has always named, resolved by
+# a committed Cargo.lock. They are old and they still build; changing them is a
+# separate decision from making the tool runnable.
+
+[package]
+name = "start-all-scenarios"
+version = "0.4.0"
+edition = "2015"
+publish = false
+autobins = false
+autotests = false
+autoexamples = false
+autobenches = false
+
+[[bin]]
+name = "start_all_scenarios"
+path = "start_all_scenarios.rs"
+
+[dependencies]
+time = "0.1.25"
+walkdir = "1"
+clap = "~2.26"
+regex = "0.2"
+wait-timeout = "0.1.5"

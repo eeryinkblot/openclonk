@@ -171,3 +171,8 @@ qt.conf
 # Logs written by the CI scenario suite, and by running it locally
 /engine.log
 /scenario-*.log
+
+# Cargo build directory for tests/start_all_scenarios.rs, and the throwaway
+# tree the content lint runs the engine from
+/tests/target/
+/lintroot/
