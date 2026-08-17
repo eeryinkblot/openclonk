@@ -1261,6 +1261,81 @@ than two.
 
 ---
 
+## 29. `bc55e8f42`, `ed28194a1` — the content lint could not be started, and never gated
+
+**Files:** `tests/Cargo.toml`, `tests/Cargo.lock`, `tests/start_all_scenarios.rs`,
+`tests/scenario-lint-expected.txt`, `.gitignore`
+
+### Motivation
+
+`tests/start_all_scenarios.rs` runs every scenario under `planet/` and reads the
+`C4AulScriptEngine linked - N lines, N warnings, N errors` line the engine
+prints — a compiler pass over the game content. It is the only thing that ever
+loaded the 69 real game scenarios in Missions, Worlds, Arena, Parkour, Defense
+and Tutorials. Written in 2018, one commit, never touched again.
+
+Two reasons it did nothing for eight years:
+
+- **It could not be started.** The file carries
+  `#!/usr/bin/env run-cargo-script` and a cargo-script dependency header.
+  cargo-script has been unmaintained since roughly then and does not install on
+  a current toolchain, so running the tool meant hand-building a crate around
+  it first.
+- **It could not fail.** It printed the counts it captured and never inspected
+  them; the only `panic!` is for failing to spawn the engine. A human had to
+  read 99 lines of output and notice. Nobody did — the `variable_out_of_scope`
+  warning fixed in `95a1d8094` is precisely what it was built to surface, and it
+  sat there from 2018.
+
+### Technical effect
+
+`tests/Cargo.toml` states the same five dependencies as an ordinary manifest,
+with a committed `Cargo.lock`, so `cargo build --manifest-path tests/Cargo.toml`
+works with nothing installed beyond cargo. The versions are unchanged; they are
+old and they still build, and modernising them is a separate decision.
+
+`--expect <file>` turns the tool into a check. `tests/scenario-lint-expected.txt`
+pins a warning and error count per scenario, and deviation fails in **both**
+directions — the same rule the CI scenario suite uses, for the same reason:
+
+    FAIL Tests.ocf/Benchmarks.ocs: 1 warning, 0 errors; pinned at 0 and 0.
+    FAIL Tests.ocf/SkeletonAppend.ocs: 2 warnings, 0 errors; pinned at 99 and 0.
+         Something was fixed -- lower the pin in the same commit.
+    FAIL Missions.ocf/New.ocs: not in <file>. Add it with the counts it reports.
+    FAIL Tests.ocf/Gone.ocs: pinned in <file> but no such scenario was found.
+
+All four were exercised by hand against a doctored expectations file.
+
+The shebang and cargo-script header stay: rustc skips the first line, and they
+record how the tool was meant to be run.
+
+### Risk
+
+None to the engine — no C++ changes. The risk this carries is a **stale pin
+file**: 99 lines that have to move when content moves. That is deliberate, and
+the "not in this file" failure is what keeps new content from arriving
+unnoticed.
+
+### What it found
+
+Seven scenarios are not clean, not four, and one of the three additions was
+invisible for a reason worth recording. `Tests.ocf/ColorfulLights.ocs` reports
+**10** warnings — nine globals declared in both `Script.c:10-11` and the
+generated `Objects.c:3`, plus a deliberate assignment inside an `if` — and the
+earlier survey missed it because `grep -v "0 warnings, 0 errors"` also drops
+`10 warnings, 0 errors`. Any count ending in a zero would have gone the same
+way, in a survey specifically looking for warnings.
+
+The other two, `CableCars.ocs` and `LiquidSystem.ocs`, were counted as
+non-reporting rather than unclean: against a *packed* tree they cannot start,
+because `Experimental.ocd`, `Experimental.ocf`, `Tests.ocf` and `Issues.ocf` are
+deliberately not in `OC_C4GROUPS`, and `CableCars.ocs` needs a definition nested
+inside another scenario in `Experimental.ocf`. The lint therefore runs against
+the unpacked tree, which costs nothing: the 97 that run either way report
+identical counts, so packing does not affect script linking.
+
+---
+
 ## Not addressed
 
 Known, deliberately left alone:

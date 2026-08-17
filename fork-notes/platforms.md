@@ -438,6 +438,56 @@ cmake --build build --target tests aul_test StdMeshMath --parallel 24
 ./build/tests/StdMeshMath  #  5
 ```
 
+Now **101 of 101**, over four binaries: `c0c6d8639` took `tests` to 20 and
+`a81cd4e97` added `determinism` with 24. Two further tests are disabled on
+purpose and state a defect nobody has fixed (#47).
+
+### Under a sanitizer — measured here, and not clean
+
+The first time anything in this project was built with `-fsanitize=`. Nothing
+in the tree does it: no CMake option, no CI job, no entry in `tools/default.nix`.
+The one prior use was by hand, upstream, in `2f837fc1a` — *"Fix two
+allocate-deallocate mismatches. Found by ASan."*
+
+```sh
+cmake -B build-asan -DCMAKE_BUILD_TYPE=RelWithDebInfo -DHEADLESS_ONLY=ON \
+    -DGTEST_ROOT=$GT/googletest -DGMOCK_ROOT=$GT/googlemock \
+    -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-sanitize=vptr -fno-omit-frame-pointer" \
+    -DCMAKE_C_FLAGS="-fsanitize=address,undefined -fno-sanitize=vptr -fno-omit-frame-pointer" \
+    -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined" .
+cmake --build build-asan --target tests aul_test StdMeshMath determinism --parallel 24
+```
+
+**ASan is clean.** All 101 tests pass with no report, so a sanitizer job could
+gate from its first run.
+
+**UBSan reports ten sites**, all 101 tests still passing — these are
+diagnostics, not failures:
+
+| Where | What |
+| --- | --- |
+| `src/script/C4AulExec.cpp:310, 314, 364, 372` | signed integer overflow in C4Script's `++`, `--`, `+`, `-` |
+| `src/script/C4AulCompiler.cpp:898` | negation of `INT_MIN` while constant-folding `AB_Neg` |
+| `src/lib/Standard.cpp:144, 145, 148` | signed overflow parsing an out-of-range number literal |
+| `src/lib/StdBuf.h:168` | null pointer passed to `memcmp`, both arguments |
+
+The script-engine ones are not accidents. `tests/aul/AulMathTest.cpp` **asserts**
+the wraparound — `EXPECT_EQ(C4VINT_MIN, RunExpr("2147483647 + 1"))` — so
+two's-complement wraparound is a specified C4Script semantic implemented on
+undefined C++ behaviour, in an engine whose correctness model is bit-identical
+results across compilers and machines. `C4AulCompiler.cpp:898` puts it in the
+*bytecode*, at compile time. #54, and a reason to want that job before #49
+rather than after: a standard bump is when a compiler starts exploiting UB it
+used to leave alone.
+
+**`-fsanitize=vptr` does not link here**, which is why the flags above disable
+it:
+
+    /usr/bin/ld: undefined reference to `typeinfo for C4Def'
+
+The `tests` binary links `libc4script`, whose standalone host stubs `C4Def` out,
+so the RTTI the vptr check emits has nothing to resolve against.
+
 ### Scenario run — verified here
 
 Identical to the other two platforms. `Movement.ocs` reports 3 tests, 0 failed,
@@ -832,6 +882,23 @@ suspecting the audio libraries.
 **`cmake --build … -j` with no number means unlimited parallelism** to GNU Make.
 About 500 translation units will exhaust a machine's memory. Always pass a
 count.
+
+**`StdStrBuf("literal")` takes a reference, not a copy**, and anything writing
+through `getMData()` then writes into read-only memory. The constructor is
+`explicit StdStrBuf(const char *pData, bool fCopy = false)` — note the default —
+and `getMData()` asserts `!fRef`, which is compiled out of a release build. So
+the failure mode depends on the build type: an assertion in Debug, a **segfault**
+in RelWithDebInfo, and nothing in the code at the call site looks wrong. Met
+while writing a test that passed a literal to `MakeTempFilename`; use `Copy()`.
+It is the same sharp edge [ADR-019](decisions.md#adr-019--serialise-the-groups-target-rather-than-repair-maketempfilename)
+names as the reason not to extend that overload in passing.
+
+**A substring is not a match, and `grep -v` makes that expensive.** Filtering a
+scenario report with `grep -v "0 warnings, 0 errors"` silently keeps
+`10 warnings, 0 errors` out of the result, because the pattern occurs inside it.
+That is how a scenario with ten warnings stayed invisible in a survey looking
+specifically for warnings, and how "93 of 97 clean" got written down. Anchor the
+pattern (`grep -vE ", 0 warnings, 0 errors$"`) or parse the numbers.
 
 ---
 

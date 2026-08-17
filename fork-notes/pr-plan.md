@@ -225,7 +225,7 @@ fix sees it was considered; [ADR-018](decisions.md) has the reasoning.
 
 | | |
 | --- | --- |
-| Commits | the `.github/workflows/build.yml` series, starting `91b545a07`; latest `3f0b9374d`, `2e9855c3d`, `65a61cce6` |
+| Commits | the `.github/workflows/build.yml` series, starting `91b545a07`; latest `3f0b9374d`, `2e9855c3d`, `65a61cce6`, `013d76873` (workflow hunk only), `592b7b754` |
 | Files | `.github/workflows/build.yml` |
 | Effect | Replaces the dead Travis and AppVeyor configuration |
 
@@ -413,8 +413,11 @@ that are not clean *today*, in their tree, and that one of them
 (`ColorfulLights.ocs`, nine duplicate global declarations) has been sitting
 there unnoticed since the editor generated `Objects.c`.
 
-The CI job is fork-local and is deliberately not in this cluster; upstream has
-no working CI to add it to.
+The `scenario-lint` job that runs it is **not** in this cluster — it belongs to
+PR 10 with the rest of the workflow, which is submitted last because it cannot
+pass on upstream master until everything above has landed. The two tests/
+commits stand on their own without it: the tool becomes runnable and gains a
+`--expect` mode whether or not anything automated calls it.
 
 ### PR 5 — macOS: audio and app bundling
 

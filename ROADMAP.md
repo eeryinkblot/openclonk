@@ -20,7 +20,7 @@ matrix is "derived" any more.
 
 | | |
 | --- | --- |
-| CI jobs | 6: Linux headless, Linux client, content lint, macOS headless, macOS app bundle, Windows c4group. Five were green on the last run; the content lint is new and has only been rehearsed locally |
+| CI jobs | 6, all green: Linux headless, Linux client, content lint, macOS headless, macOS app bundle, Windows c4group |
 | Unit tests | 101 over four binaries (`tests`, `aul_test`, `StdMeshMath`, `determinism`), plus 2 disabled that state a known defect (#47) |
 | Scenario assertions in CI | 912, across the five scenarios that have any |
 | Known failing | 14 assertions, all in `ObjectInteractionMenu.ocs`, pinned so they cannot silently grow (#51) |
@@ -91,7 +91,8 @@ Seven scenarios are not clean, one more than this entry listed:
 `ColorfulLights.ocs` reports **10** warnings, nine of them globals declared
 twice. It was missed by the earlier survey because `grep -v "0 warnings, 0
 errors"` also swallows `10 warnings, 0 errors`. None of the seven is diagnosed;
-they are pinned, which makes each one a tripwire rather than a fix.
+they are pinned, which makes each one a tripwire rather than a fix, and they are
+tracked as **#55**. The job was green on its first run, 5m25s.
 
 ### ~~4. #44 — raise `cmake_minimum_required` above 3.5.1~~ — done
 
