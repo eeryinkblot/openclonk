@@ -826,3 +826,30 @@ failed Windows CI attempts were assumptions of exactly that kind.
 
 New defects go in [divergence.md](divergence.md); the reasoning behind a fix,
 and the alternatives rejected, go in [decisions.md](decisions.md).
+
+### Repetition is not corroboration
+
+The specific way these notes decay, learned the hard way in a single day. Four
+claims were wrong, and every one of them was wrong in the same shape: written
+once from reading rather than running, then **copied forward** until the number
+of places it appeared made it look settled.
+
+| Claim | Repeated in | Actually |
+| --- | --- | --- |
+| "No display on the runner", so CI cannot launch anything | 4 places, plus #22 and the workflow comments | `xvfb` is one package and the engine runs on llvmpipe at GL 4.6 (#45) |
+| Music must sit next to the executable | here and #28 | True on Windows and macOS, a no-op on Linux, where `SystemDataPath` is the install prefix |
+| The 496 assertions are spread over 29 unrun scenarios | #36, and repeated from it here | They live in **five** files; the four that never ran held 899 of them |
+| `start_all_scenarios.rs` is the weaker harness, fit for retirement | written here without reading it | It is a content lint over all 99 scenarios, it still builds on Rust 1.93, and it finds real defects (#52) |
+
+Each cost real work to unlearn, and two of them had made *other* gaps look
+permanent — the display claim alone was load-bearing for the editor and the GUI
+smoke test.
+
+So: **a claim that appears in several places is more suspect than one that
+appears once**, not less. It has had more opportunities to be copied and fewer
+to be checked. When something here reads as settled and nothing says who ran it,
+that is the entry to test first.
+
+The cheap check is usually cheaper than it looks. llvmpipe was one environment
+variable. Reading `start_all_scenarios.rs` was ten minutes. Counting the
+`doTest()` calls was one `grep -c`.

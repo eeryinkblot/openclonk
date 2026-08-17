@@ -224,7 +224,7 @@ fix sees it was considered; [ADR-018](decisions.md) has the reasoning.
 
 | | |
 | --- | --- |
-| Commits | the `.github/workflows/build.yml` series, starting `91b545a07`; latest `753b74a59` |
+| Commits | the `.github/workflows/build.yml` series, starting `91b545a07`; latest `3f0b9374d`, `2e9855c3d`, `65a61cce6` |
 | Files | `.github/workflows/build.yml` |
 | Effect | Replaces the dead Travis and AppVeyor configuration |
 
@@ -299,6 +299,43 @@ change their own googletest. Say that explicitly; the natural first objection is
 
 Independent of PR 7, which registers the `tests` target with ctest, though a
 maintainer may want them together as the test-infrastructure cluster.
+
+### PR 15 — tests: cover the determinism primitives
+
+| | |
+| --- | --- |
+| Commits | `a81cd4e97` |
+| Files | `tests/CMakeLists.txt`, `tests/math/C4RealTest.cpp`, `tests/math/C4RandomTest.cpp` |
+| Effect | 24 tests over `C4Real` and `C4Random`; `ctest` runs four binaries instead of three |
+
+Pure addition — no engine file changes, so nothing can regress. The argument is
+the one upstream already made for itself in the comments at the top of
+`C4Real.h`: fixed point exists because floating point desyncs, and until now
+nothing checked that the fixed-point type keeps its word.
+
+Two things to say in the PR text. The assertions are exact bit patterns on
+purpose, because `EXPECT_NEAR` would pass through precisely the change that
+causes a desync. And the pinned `pcg32` sequences were captured on GCC and pass
+unchanged on clang, which is a result rather than a formality.
+
+Independent of everything else. Pairs naturally with PR 7 and PR 16 as a
+testing cluster if a maintainer prefers one PR.
+
+### PR 16 — Tests.ocf: a variable used outside its declared scope
+
+| | |
+| --- | --- |
+| Commits | `95a1d8094` |
+| Files | `planet/Tests.ocf/LiquidContainer.ocs/Script.c` |
+| Effect | The scenario links with 0 warnings instead of 2 |
+
+Three lines, one of them a comment. `var test` was declared inside one `if`
+block and used inside the next; C4Script variables are function-scoped so it
+works, which is why the engine warns rather than errors.
+
+Worth mentioning in the PR that this is what `tests/start_all_scenarios.rs`
+exists to find, and that the tool still works (#52) — it makes the change look
+like the first result of a tool upstream already has rather than a drive-by.
 
 ### PR 5 — macOS: audio and app bundling
 

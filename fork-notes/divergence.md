@@ -1055,6 +1055,43 @@ where all 72 pass.
 
 ---
 
+## 24. `95a1d8094` — a scenario used a variable outside its declared scope
+
+**Files:** `planet/Tests.ocf/LiquidContainer.ocs/Script.c`
+
+### Motivation
+
+The scenario links with two warnings:
+
+    WARNING: variable 'test' used outside of its declared scope
+        (in Global.Test5_CheckPipes, LiquidContainer.ocs/Script.c:540:17)
+        [variable_out_of_scope]
+    ... and the same at 541:115
+
+`var test` was declared inside `if (pipeA != nil)` and used again inside
+`if (pipeB != nil)`. C4Script variables are function-scoped, so it works — which
+is precisely why the engine warns: the code reads as though it would not.
+
+Found by running the scenario. Nothing had, so nothing had ever seen the
+warning. It is also exactly what `tests/start_all_scenarios.rs` was written to
+surface in 2018 (#52).
+
+### Technical effect
+
+The declaration moves to function scope, next to `functionA`/`functionB`, where
+this function's other locals already are.
+
+### Risk
+
+None. The generated code is identical — function-scoped either way — so this
+changes what the engine says about the file, not what it does.
+
+Worth keeping rather than suppressing: the CI scenario suite asserts
+`0 warnings, 0 errors` per scenario, and that assertion is only worth having if
+the tree satisfies it.
+
+---
+
 ## Not addressed
 
 Known, deliberately left alone:
@@ -1089,6 +1126,13 @@ shipped executables.
 
 All three also build and pass on Linux/GCC 16 — **72 of 72**, the same set as
 macOS.
+
+A fourth target, `determinism`, was added in `a81cd4e97`: 24 tests over
+`C4Real` and `C4Random`, the two units gameplay reproducibility rests on. That
+brings the suite to **96**, and `ctest` to four binaries. The assertions are
+exact bit patterns rather than approximations, since a result that moves by one
+unit is a desync rather than a rounding difference. The pinned `pcg32` sequences
+were captured on GCC and pass unchanged on clang.
 
 Version choice is constrained from both sides, and the lower bound moved. It
 used to be the arity-based `MOCK_METHOD1`/`MOCK_METHOD2` macros, dropped by
