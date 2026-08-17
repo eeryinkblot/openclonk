@@ -54,13 +54,15 @@ jobs:
 
       # CMake compiles gtest/gmock into the project, so it needs their sources.
       # A packaged googletest only ships headers and libraries and will not do.
-      # The version is pinned from both ends. The lower bound is the toolchain:
-      # 1.10.0, which this used to pin, has no #include <cstdint> in
-      # gtest-death-test.cc and gtest-port.cc, and GCC 15 and later no longer
-      # drag it in by accident, so the whole library fails to compile on a
-      # current distribution. The upper bound is the project:
-      # CMAKE_CXX_STANDARD 14 with STANDARD_REQUIRED ON rules out 1.15+, which
-      # wants C++17. 1.14.0 is the newest release inside both.
+      # The lower bound is the toolchain: 1.10.0, which this used to pin, has no
+      # #include <cstdint> in gtest-death-test.cc and gtest-port.cc, and GCC 15
+      # and later no longer drag it in by accident, so the whole library fails
+      # to compile on a current distribution.
+      #
+      # There is no upper bound any more. It used to be CMAKE_CXX_STANDARD 14,
+      # which ruled out 1.15+; the project is on C++17 now, so moving past
+      # 1.14.0 is a choice rather than a blocker. Nothing needs it yet, and the
+      # three development machines have 1.14.0 unpacked already.
       #
       # The tag naming changed at 1.9: up to 1.10.0 it is release-<v>, from
       # 1.11.0 on it is v<v>, and the extracted directory follows the tag.

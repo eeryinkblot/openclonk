@@ -62,7 +62,17 @@ set_property(GLOBAL PROPERTY USE_FOLDERS ${PROJECT_FOLDERS})
 ############################################################################
 include(CheckCXXCompilerFlag)
 
-set(CMAKE_CXX_STANDARD 14)
+# C++14 was what this shipped for years, and it had started to cost: it caps
+# googletest at 1.14.0 -- a window one release wide, since 1.10.0 no longer
+# compiles on GCC 15 and later -- and it rules out Qt6 entirely, which is the
+# only path to an editor on current macOS.
+#
+# Nothing in src/ uses anything C++17 removed: no auto_ptr, bind1st/bind2nd,
+# ptr_fun/mem_fun, random_shuffle, unary_function/binary_function or
+# std::iterator. Every `register` in the tree is a word in a comment. The four
+# `throw()` specifications are deprecated in C++17 rather than removed, and do
+# not warn.
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Try to enable link-time optimization / link-time code generation /
