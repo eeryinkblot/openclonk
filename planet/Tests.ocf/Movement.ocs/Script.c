@@ -377,7 +377,20 @@ global func Test3_Execute()
 	if (rock.was_launched && rock->GetSpeed() <= 1)
 	{
 		Log("Rock position is %v", rock->GetPosition());
-		doTest("Check X coordinate > 380, got %v, expected %v", rock->GetX() > 380, true); // Rock moves upward as redirected movement
+		// The rock is redirected rightwards along the slope and comes to rest
+		// short of x = 380. The original expectation, x > 380, described the
+		// engine before "Improved movement code" (0315ea6ef, June 2019), which
+		// changed how objects at high velocity behave on hitting the
+		// landscape and said so; this test was written three months earlier
+		// and never updated. It has failed on every platform since.
+		//
+		// A range rather than a bound, because the resting place depends on
+		// the game's random seed: two outcomes exist, x = 372 and x = 374,
+		// measured over twenty runs and ten fixed seeds on Linux. The margin
+		// is wide enough for the other platforms, which have been sampled once
+		// each, and still far from both the launch position (320) and the
+		// pre-2019 result (482).
+		doTest("Check X coordinate inside [360, 390], got %v, expected %v", Inside(rock->GetX(), 360, 390), true); // Rock moves upward as redirected movement
 		doTest("Check Y coordinate inside [140, 160], got %v, expected %v", Inside(rock->GetY(), 140, 160), true);
 		return Evaluate();
 	}

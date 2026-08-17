@@ -204,12 +204,13 @@ jobs:
           # Every scenario has an expected failure count, and the job fails on
           # any deviation in either direction.
           #
-          # Two of them are not zero. Movement.ocs fails test 3 on every
-          # platform -- Windows/MSVC, macOS/clang and Linux/gcc all land the
-          # rock at [372, 157] against an expected x > 380, bit-identical -- so
-          # it is a wrong expectation rather than a defect (#35).
-          # ObjectInteractionMenu.ocs fails 14 of 328 in the item-transfer path,
-          # cause not yet established (#51).
+          # One of them is not zero: ObjectInteractionMenu.ocs fails 14 of 328
+          # in the item-transfer path, cause not yet established (#51).
+          #
+          # Movement.ocs used to be the second one and is now pinned at zero.
+          # Its test 3 expected a rock position the engine stopped producing in
+          # June 2019, three months after the test was written; the expectation
+          # was corrected rather than the engine (#35).
           #
           # Pinning the counts rather than merely warning about them is the
           # point. A scenario that is allowed to fail freely does not just catch
@@ -225,7 +226,6 @@ jobs:
           expected_failures() {
             case "$1" in
               ObjectInteractionMenu) echo 14 ;;  # #51
-              Movement)              echo 1  ;;  # #35
               *)                     echo 0  ;;
             esac
           }
