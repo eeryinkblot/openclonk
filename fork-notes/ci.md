@@ -167,12 +167,17 @@ and the pins are per scenario for the same reason the suite above pins failure
 counts — deviation in **either** direction fails, so a fix has to lower its pin
 in the same commit.
 
-The two runners agree assertion for assertion, failures included — 290/168/120
-passing and 14 failing in `ObjectInteractionMenu` on both. That
-is C4Real determinism across clang and GCC, over 912 assertions rather than the
-7 it used to be, and it is now checked on every push rather than by hand. The
-`determinism` unit tests say the same thing about the primitives: sequences
-pinned from pcg32 on GCC pass unchanged on clang.
+**All three runners agree assertion for assertion, failures included.** Since
+`0875c9348` the Windows job runs the same five scenarios from the same pin file,
+and GCC, clang and MSVC report the identical 290 / 168 / 120 / 314+14 / 6 —
+**912 assertions**, down to *which* 14 fail in `ObjectInteractionMenu`. That is
+C4Real determinism across three compilers and three operating systems, checked
+on every push rather than by hand, against the 7 assertions this workflow
+started with. The `determinism` unit tests say the same about the primitives:
+sequences pinned from pcg32 on GCC pass unchanged on clang and MSVC.
+
+It also says something about #51: 14 identical failures on three compilers is
+not a platform defect, it is the same bug everywhere.
 
 ### `scenario-lint` — `ubuntu-latest`
 
@@ -274,7 +279,8 @@ everything, run all four test binaries through ctest, pack the game data,
 reject empty archives, stage the groups and run the scenario suite against the
 same pinned counts, from the same file. Green on its first run, when it still
 ran `Movement.ocs` alone; the rock landed at `[372, 157]`, one of the two values
-Linux produces.
+Linux produces. It has run the whole suite since `0875c9348`, and reports the
+same 912 assertions as the Unix jobs.
 
 **It costs 7 minutes, not the 38 this was budgeted at.** That figure came from
 the development machine, where all twelve ports build from source on four

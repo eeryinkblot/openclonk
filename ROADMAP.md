@@ -22,7 +22,7 @@ matrix is "derived" any more.
 | --- | --- |
 | CI jobs | 7, all green: Linux headless, Linux client, content lint, macOS headless, macOS app bundle, Windows c4group, Windows headless |
 | Unit tests | 101 over four binaries (`tests`, `aul_test`, `StdMeshMath`, `determinism`), plus 2 disabled that state a known defect (#47) |
-| Scenario assertions in CI | 912, across the five scenarios that have any |
+| Scenario assertions in CI | 912, on **all three** platforms, agreeing assertion for assertion |
 | Known failing | 14 assertions, all in `ObjectInteractionMenu.ocs`, pinned so they cannot silently grow (#51) |
 | Scenarios script-linted | 99 of 99, 92 of them clean; the other 7 pinned and undiagnosed |
 
