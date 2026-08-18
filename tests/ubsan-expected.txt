@@ -1,0 +1,65 @@
+# Undefined behaviour UndefinedBehaviorSanitizer reports today, one site per
+# line, as file:line:column.
+#
+# The sanitizer job fails on any site that is not listed here, and on any listed
+# site that stops being reported -- the same rule as every other pin in this
+# tree. A site that disappears means someone fixed it, and the pin has to come
+# down in the same commit or the guard stops protecting anything.
+#
+# Only the location is pinned. The messages carry operand values that change
+# with the input ("2147483647 + 1", "left shift of negative value -5"), so the
+# kind is recorded here as a comment instead.
+#
+# Line numbers move when the file above them is edited, and a moved pin is a
+# nuisance rather than a bug. Take it as a prompt: the code around it changed,
+# which is exactly when the entry deserves a second look.
+#
+# AddressSanitizer is NOT pinned. It reports nothing today -- across all four
+# test binaries and a scenario run -- so it gates outright, and any finding at
+# all is a failure.
+#
+# Measured on Linux, GCC 16.2.1, C++17, with -fno-sanitize=vptr (see the job).
+
+# --- the script engine's integer semantics -------------------------------
+#
+# C4Script guarantees two's-complement wraparound and tests/aul/AulMathTest.cpp
+# asserts it -- "2147483647 + 1" must equal INT_MIN. It is produced by plain
+# signed C++ arithmetic, which is undefined, so the guarantee rests on the
+# compiler not exercising a freedom it has. The fix is to compute in uint32_t
+# and truncate, not to loosen the tests. #54.
+src/script/C4AulExec.cpp:310:20      # ++ overflows
+src/script/C4AulExec.cpp:314:20      # -- underflows
+src/script/C4AulExec.cpp:364:18      # binary - underflows
+src/script/C4AulExec.cpp:372:18      # binary + overflows
+src/script/C4AulCompiler.cpp:898:18  # constant-folding negates INT_MIN, into the bytecode
+
+# --- landscape polygon rasterisation --------------------------------------
+#
+# fill_edge_structure() shifts coordinates left by POLYGON_FIX_SHIFT to build a
+# fixed-point edge slope. Both operands go negative for ordinary maps, and
+# shifting a negative value left is undefined before C++20. Reached by a
+# scenario run, not by any unit test.
+src/landscape/C4Landscape.cpp:1171:30  # (i2[0] - i1[0]) << 16
+src/landscape/C4Landscape.cpp:1172:19  # i1[0] << 16
+
+# --- overflow used as a mechanism -----------------------------------------
+#
+# Distance() squares two 64-bit differences and then checks `if (d2 < 0)` for
+# the overflow it just risked. Detecting signed overflow after the fact is
+# precisely what a compiler may assume cannot happen, and delete the check for.
+src/lib/Standard.cpp:28:10           # dx*dx + dy*dy in Distance()
+
+# --- number parsing --------------------------------------------------------
+#
+# StrToI32 multiplies and accumulates without a range check, so a script literal
+# larger than int32 overflows during parsing.
+src/lib/Standard.cpp:144:10          # result *= base
+src/lib/Standard.cpp:145:10          # result += value
+src/lib/Standard.cpp:148:9           # result *= sign
+
+# --- memcmp with null ------------------------------------------------------
+#
+# StdBuf::Compare() passes both pointers straight to memcmp, which declares them
+# nonnull, so a zero-length compare of two empty buffers is undefined even
+# though it reads nothing. Reported twice at the same site, once per argument.
+src/lib/StdBuf.h:168:21              # std::memcmp(getPtr(iAt), pCData, iCSize)

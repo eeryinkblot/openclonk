@@ -334,6 +334,154 @@ jobs:
 
           exit $status
 
+  # The check for the class of defect no test can catch. #41 was a stack buffer
+  # read after its scope ended, in the path every `groups` build takes, and it
+  # was found by reading the function -- the five C4Group tests written for the
+  # same area cannot see it, because a dead stack slot returns the right bytes
+  # until something else claims it.
+  #
+  # Nothing in this project had ever been built with -fsanitize= before. The one
+  # prior use was by hand, upstream, in 2f837fc1a: "Fix two allocate-deallocate
+  # mismatches. Found by ASan."
+  #
+  # ASan gates outright, because it reports nothing today. UBSan reports twelve
+  # sites, pinned in tests/ubsan-expected.txt the way every other known-broken
+  # thing here is pinned: a new site fails the job, and so does a pinned site
+  # that stops being reported. #54.
+  sanitizers:
+    name: Sanitizers — ubuntu-latest
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libpng-dev libjpeg-dev libfreetype-dev zlib1g-dev \
+            libcurl4-openssl-dev libminiupnpc-dev
+
+      - name: Fetch googletest sources
+        run: |
+          curl -sSL -o gtest.tar.gz \
+            "https://github.com/google/googletest/archive/refs/tags/v${GTEST_VERSION}.tar.gz"
+          tar xzf gtest.tar.gz
+
+      # -fno-sanitize=vptr is not a preference. The vptr check emits references
+      # to typeinfo for polymorphic types, and the `tests` binary links
+      # libc4script, whose standalone host stubs C4Def out -- so the link fails
+      # with "undefined reference to `typeinfo for C4Def'" before anything runs.
+      - name: Configure
+        run: |
+          GT="$PWD/googletest-${GTEST_VERSION}"
+          SAN="-fsanitize=address,undefined -fno-sanitize=vptr -fno-omit-frame-pointer"
+          cmake -B build-san -DCMAKE_BUILD_TYPE=RelWithDebInfo -DHEADLESS_ONLY=ON \
+            -DGTEST_ROOT="$GT/googletest" -DGMOCK_ROOT="$GT/googlemock" \
+            -DCMAKE_CXX_FLAGS="$SAN" -DCMAKE_C_FLAGS="$SAN" \
+            -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined" .
+
+      - name: Build
+        run: |
+          jobs=$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 2)
+          cmake --build build-san --parallel "$jobs" \
+            --target tests aul_test StdMeshMath determinism openclonk-server c4group
+
+      # The unit tests, then a scenario. The scenario is what reaches the game
+      # loop: the landscape sites in the pin file are reported by nothing else,
+      # and #43's uninitialised reads live in that half of the codebase too.
+      #
+      # Leak detection stays on for the test binaries, which are leak-clean, and
+      # off for the engine, which is killed rather than shut down and could not
+      # report leaks meaningfully anyway.
+      - name: Run everything under the sanitizers
+        run: |
+          status=0
+          rm -f san-*.log
+
+          for t in tests aul_test StdMeshMath determinism; do
+            echo "::group::$t"
+            if ! UBSAN_OPTIONS=print_stacktrace=1 "./build-san/tests/$t" > "san-$t.log" 2>&1; then
+              echo "::error::$t failed under the sanitizers"
+              status=1
+            fi
+            tail -5 "san-$t.log"
+            echo "::endgroup::"
+          done
+
+          # Packing runs the sanitized c4group twelve times, and its output goes
+          # into the same set of logs on purpose: AddEntryOnDisk is where #41
+          # lived, and packing a directory is the path that reads the buffer
+          # whose lifetime had ended. This is the closest thing to a regression
+          # test that defect can have.
+          echo "::group::Pack game data with a sanitized c4group"
+          cmake --build build-san --target groups --parallel 1 > san-groups.log 2>&1 \
+            || { echo "::error::packing failed under the sanitizers"; tail -30 san-groups.log; status=1; }
+          for f in build-san/*.oc*; do
+            [ -s "$f" ] || { echo "::error::$f is empty"; status=1; }
+          done
+          echo "::endgroup::"
+
+          echo "::group::Movement.ocs"
+          mkdir -p build-san/planet
+          for f in build-san/*.oc*; do
+            ln -sf "../$(basename "$f")" "build-san/planet/$(basename "$f")"
+          done
+          tail -f /dev/null | \
+            env UBSAN_OPTIONS=print_stacktrace=1 ASAN_OPTIONS=detect_leaks=0 \
+            ./build-san/openclonk-server --language=US \
+            "$PWD/planet/Tests.ocf/Movement.ocs" "$PWD/planet/Test.ocp" \
+            > san-scenario.log 2>&1 &
+          pid=$!
+          for _ in $(seq 300); do
+            grep -qE "All tests have|At least one test has failed" san-scenario.log && break
+            sleep 1
+          done
+          kill $pid 2>/dev/null || true
+          sleep 2
+          kill -9 $pid 2>/dev/null || true
+          pkill -f "tail -f /dev/null" 2>/dev/null || true
+          wait $pid 2>/dev/null || true
+          grep -E "tests total|tests failed|Player join" san-scenario.log || true
+          if ! grep -q "Player join: Test" san-scenario.log; then
+            echo "::error::the sanitized scenario ran no assertions"
+            status=1
+          fi
+          echo "::endgroup::"
+
+          # ASan gates. It reports nothing today, so anything at all is new.
+          if grep -h "ERROR: AddressSanitizer" san-*.log; then
+            echo "::error::AddressSanitizer reported an error"
+            status=1
+          fi
+
+          # UBSan is pinned by location. The messages carry operand values that
+          # vary with the input, so only file:line:column is compared.
+          grep -hoE "[^ ]+\.(cpp|h):[0-9]+:[0-9]+: runtime error:" san-*.log \
+            | sed -e 's|.*/src/|src/|' -e 's|: runtime error:||' \
+            | sort -u > ubsan-actual.txt
+          sed -e 's/#.*//' -e '/^[[:space:]]*$/d' -e 's/[[:space:]]*$//' \
+            tests/ubsan-expected.txt | sort -u > ubsan-expected.txt
+
+          echo "::group::UBSan sites"
+          cat ubsan-actual.txt
+          echo "::endgroup::"
+
+          if new=$(comm -23 ubsan-actual.txt ubsan-expected.txt) && [ -n "$new" ]; then
+            echo "::error::undefined behaviour at a site that is not pinned:"
+            echo "$new"
+            grep -A 3 -F "$(echo "$new" | head -1)" san-*.log | head -20
+            status=1
+          fi
+          if gone=$(comm -13 ubsan-actual.txt ubsan-expected.txt) && [ -n "$gone" ]; then
+            echo "::error::pinned sites no longer reported. If this is a fix, remove them from tests/ubsan-expected.txt in the same commit:"
+            echo "$gone"
+            status=1
+          fi
+
+          exit $status
+
   # The only thing that loads the 69 real game scenarios -- Missions, Worlds,
   # Arena, Parkour, Defense, Tutorials. The suite above runs the five under
   # Tests.ocf that carry assertions; a script error introduced in a mission is

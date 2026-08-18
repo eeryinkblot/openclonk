@@ -176,3 +176,9 @@ qt.conf
 # tree the content lint runs the engine from
 /tests/target/
 /lintroot/
+
+# Sanitizer build and the logs its CI job leaves behind
+/build-san/
+/san-*.log
+/ubsan-actual.txt
+/ubsan-expected.txt
