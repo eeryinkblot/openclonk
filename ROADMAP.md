@@ -20,14 +20,14 @@ matrix is "derived" any more.
 
 | | |
 | --- | --- |
-| CI jobs | 7, all green: Linux headless, Linux client, content lint, macOS headless, macOS app bundle, Windows c4group, Windows headless |
+| CI jobs | 8, all green: Linux headless, Linux client, content lint, sanitizers, macOS headless, macOS app bundle, Windows c4group, Windows headless |
 | Unit tests | 101 over four binaries (`tests`, `aul_test`, `StdMeshMath`, `determinism`), plus 2 disabled that state a known defect (#47) |
 | Scenario assertions in CI | 912, on **all three** platforms, agreeing assertion for assertion |
 | Known failing | 14 assertions, all in `ObjectInteractionMenu.ocs`, pinned so they cannot silently grow (#51) |
 | Scenarios script-linted | 99 of 99, 92 of them clean; the other 7 pinned and undiagnosed |
 
-What CI does **not** do: launch anything (#45), build a *client* on Windows or
-macOS beyond the app bundle, or run a sanitizer (#54). The 69 real game scenarios are loaded
+What CI does **not** do: launch anything (#45), or build a *client* on Windows
+or macOS beyond the app bundle. The 69 real game scenarios are loaded
 now, but only linted — nothing asserts what they *do*, since they carry no
 `doTest()`.
 
@@ -150,18 +150,20 @@ mouse handler alone.
 
 ---
 
-### 7. CI breadth: #45, and now #54
+### 7. CI breadth: #45
 
-**#45** — launch the engine under `xvfb`. Cheap now that the `linux-client` job
-exists: it needs one apt package and a launch step, not a new build. The engine
-runs on llvmpipe at GL 4.6 Core, verified, so software rendering is not the
-obstacle it was assumed to be for a long time. A menu smoke test would also be
-the thing that eventually catches #37.
+**#45** — launch the engine under `xvfb`, and the last item on this list that is
+plain coverage rather than open-ended work. Cheap now that the `linux-client`
+job exists: one apt package and a launch step, not a new build. The engine runs
+on llvmpipe at GL 4.6 Core, verified, so software rendering was never the
+obstacle it was assumed to be. A menu smoke test would also be the thing that
+eventually catches #37.
 
-**#54** — a sanitizer job, and the strongest remaining candidate. ASan is clean
-over all 101 unit tests today, so it can gate from the first run; UBSan has ten
-sites and wants the same pinned-list treatment as everything else here. It is
-the only proposal on this page that would have caught #41.
+~~**#54** — a sanitizer job~~ — **done**, `240293816`. ASan gates outright and
+reports nothing across the test binaries, packing and a scenario; UBSan has
+twelve pinned sites. Two of them were found by the scenario run and by nothing
+else: `fill_edge_structure()` in the landscape shifts negative coordinates left,
+which is undefined before C++20. See #56 for what to do about the twelve.
 
 ~~**#30** — Windows beyond `c4group`~~ — **done**, `5198b01c6`. It was billed
 here as "the largest single coverage gap and the most expensive: about 38

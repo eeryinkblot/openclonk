@@ -459,18 +459,26 @@ cmake -B build-asan -DCMAKE_BUILD_TYPE=RelWithDebInfo -DHEADLESS_ONLY=ON \
 cmake --build build-asan --target tests aul_test StdMeshMath determinism --parallel 24
 ```
 
-**ASan is clean.** All 101 tests pass with no report, so a sanitizer job could
-gate from its first run.
+**ASan is clean.** All 101 tests pass with no report — and so do packing all
+twelve groups with a sanitized `c4group` and a full scenario run. That is why
+the job added in `240293816` gates on ASan outright rather than pinning it.
 
-**UBSan reports ten sites**, all 101 tests still passing — these are
+**UBSan reports twelve sites**, all 101 tests still passing — these are
 diagnostics, not failures:
 
 | Where | What |
 | --- | --- |
 | `src/script/C4AulExec.cpp:310, 314, 364, 372` | signed integer overflow in C4Script's `++`, `--`, `+`, `-` |
 | `src/script/C4AulCompiler.cpp:898` | negation of `INT_MIN` while constant-folding `AB_Neg` |
+| `src/landscape/C4Landscape.cpp:1171, 1172` | left shift of a negative coordinate in `fill_edge_structure()` |
+| `src/lib/Standard.cpp:28` | `dx*dx + dy*dy` in `Distance()`, which then checks `if (d2 < 0)` for the overflow it just risked |
 | `src/lib/Standard.cpp:144, 145, 148` | signed overflow parsing an out-of-range number literal |
 | `src/lib/StdBuf.h:168` | null pointer passed to `memcmp`, both arguments |
+
+The first measurement here found ten, because it ran only the unit tests. The
+two landscape sites and `Distance()` need a **scenario**, which is the only
+thing that reaches the game loop — worth remembering before concluding that a
+sanitizer has seen a codebase.
 
 The script-engine ones are not accidents. `tests/aul/AulMathTest.cpp` **asserts**
 the wraparound — `EXPECT_EQ(C4VINT_MIN, RunExpr("2147483647 + 1"))` — so

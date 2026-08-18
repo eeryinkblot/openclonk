@@ -20,6 +20,7 @@ this workflow:
 | **Platform** — build, unit tests, packing, the scenario suite | once per platform |
 | **Content** — the C4Script lint over `planet/` | once, anywhere |
 | **Configuration** — `C4GROUP_TOOL_ONLY` | where it can actually fail |
+| **Instrumentation** — ASan and UBSan | once, on the platform with the best support |
 
 The content lint is one job because the script engine is platform-independent,
 and the three platforms agreeing on it is exactly what the scenario suite
@@ -199,6 +200,50 @@ symlinks *into* `planet/` — `mkdir -p` succeeds on an existing symlink to a
 directory, and the next `ln -sf` lands in the source tree. A separate directory
 with its own copy of the binary avoids the question. It skips packing entirely,
 so it is cheaper than the job beside it despite building the engine again.
+
+### `sanitizers` — `ubuntu-latest`
+
+The check for what tests structurally cannot catch. #41 read a stack buffer
+after its scope had ended; the five `C4Group` tests written for that area pass
+either way, because a dead stack slot keeps returning the right bytes until
+something claims it. That is a sanitizer's job, and nothing in this project had
+ever been built with `-fsanitize=` — the one prior use is upstream's own
+`2f837fc1a`, by hand.
+
+| | |
+| --- | --- |
+| **ASan** | gates outright. Nothing reported across four test binaries, packing twelve groups, and a scenario, so anything at all is new. |
+| **UBSan** | twelve sites pinned in `tests/ubsan-expected.txt`, failing in both directions. |
+
+Only `file:line:column` is compared. The messages carry operand values that vary
+with the input — `2147483647 + 1`, `left shift of negative value -5` — so
+pinning the text would fail on a different input rather than on a different
+defect.
+
+Three things about the job that are easy to remove by accident:
+
+- **It packs with the sanitized `c4group`.** `AddEntryOnDisk` is where #41 was,
+  and packing a directory is the path that read the dead buffer, so this is as
+  close to a regression test as that defect can have. The packing output goes
+  into the same log set that is scanned afterwards.
+- **It runs a scenario.** That is the only thing here that reaches the game
+  loop, and two of the twelve sites are reported by nothing else:
+  `fill_edge_structure()` shifts negative coordinates left to build a
+  fixed-point edge slope for landscape polygons, which is undefined before
+  C++20.
+- **`-fno-sanitize=vptr` is not a preference.** The vptr check emits typeinfo
+  references, and `tests` links `libc4script`, whose standalone host stubs
+  `C4Def` out, so the link fails with `undefined reference to 'typeinfo for
+  C4Def'` before anything runs.
+
+**The pinned sites are findings, not noise.** Five are the script engine's
+integer semantics: `aul_test` asserts that `2147483647 + 1` equals `INT_MIN`,
+and `C4AulExec` produces that by plain signed overflow, so a guarantee of the
+language rests on undefined behaviour — in an engine whose correctness model is
+bit-identical results across compilers. One more is `Distance()` in
+`Standard.cpp`, which squares two 64-bit differences and then writes
+`if (d2 < 0)` to catch the overflow it just risked; detecting signed overflow
+after the fact is exactly what a compiler may assume cannot happen, and delete.
 
 ### `linux-client` — `ubuntu-latest`
 
