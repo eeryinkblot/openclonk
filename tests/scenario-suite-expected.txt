@@ -1,0 +1,23 @@
+# Expected assertion failures for the scenarios under planet/Tests.ocf that
+# carry assertions at all.
+#
+# Format: <expected failures> <scenario name, without .ocs>
+#
+# Read by the scenario suite on every platform, so the numbers cannot drift
+# between the Unix jobs and the Windows one. The list is also the list: a
+# scenario named here is run, and one that is not is not.
+#
+# Any deviation fails the job, in both directions. A count that grew is a
+# regression; a count that shrank means someone fixed the underlying bug and
+# has to lower the pin in the same commit, or the guard silently stops
+# protecting anything.
+#
+# The 25 other scenarios under Tests.ocf contain no doTest() at all and are
+# covered by the content lint instead, which checks what the script engine says
+# about every scenario in planet/ rather than what the scenario asserts.
+
+0  Stackable
+0  Producers
+0  LiquidContainer
+14 ObjectInteractionMenu   # #51 -- 5 of 9 tests fail in the item-transfer path
+0  Movement

@@ -10,6 +10,40 @@ same ref cancel each other (`concurrency` with `cancel-in-progress`), and every
 job has a 45-minute cap so a stuck build fails instead of running to the
 six-hour default.
 
+## How the jobs are split
+
+Worth stating, because "same product, different shape" is a fair thing to ask of
+this workflow:
+
+| Kind of check | Runs |
+| --- | --- |
+| **Platform** — build, unit tests, packing, the scenario suite | once per platform |
+| **Content** — the C4Script lint over `planet/` | once, anywhere |
+| **Configuration** — `C4GROUP_TOOL_ONLY` | where it can actually fail |
+
+The content lint is one job because the script engine is platform-independent,
+and the three platforms agreeing on it is exactly what the scenario suite
+already establishes; a second runner would reprint the same 99 lines.
+`C4GROUP_TOOL_ONLY` is Windows-only because that is where its defect is visible:
+the default target fails there (#19), while on Linux the same configuration
+succeeds by accident, since PNG and JPEG headers sit in `/usr/include` whether
+the configuration looked for them or not. A Linux job for it would be green and
+prove nothing.
+
+**ubuntu and macOS share a matrix; Windows does not.** That is a fact about the
+steps, not about the platforms. Of the 14 steps in `headless`, **12 are
+byte-identical** across the two and only the dependency install differs. Between
+`headless` and `windows-headless`, eight steps share a name and **not one shares
+its body** — different shell, `/MP` instead of `--parallel`, `ctest -C`,
+hardlinks instead of symlinks, a different test-binary directory, and no stdin
+EOF to stop the engine with. Folding Windows into the matrix would put an `if:`
+on 12 of 14 steps and make both harder to read than two honest jobs.
+
+What must not differ is what the platforms *assert*. The scenario pins live in
+`tests/scenario-suite-expected.txt` and every job that runs the suite reads
+them. They used to be a `case` statement in one job and a literal in the other,
+which is how Windows ended up checking 6 assertions where Linux checked 912.
+
 ## Jobs
 
 ### `headless` — `ubuntu-latest` and `macos-latest`
@@ -237,9 +271,10 @@ MSVC had compiled the archive layer and never seen `libc4script`,
 
 This one mirrors the Unix `headless` job — configure `HEADLESS_ONLY`, build
 everything, run all four test binaries through ctest, pack the game data,
-reject empty archives, stage the groups and start a scenario with a real player
-file. Green on its first run, and the scenario landed the rock at `[372, 157]`,
-which is one of the two values Linux produces.
+reject empty archives, stage the groups and run the scenario suite against the
+same pinned counts, from the same file. Green on its first run, when it still
+ran `Movement.ocs` alone; the rock landed at `[372, 157]`, one of the two values
+Linux produces.
 
 **It costs 7 minutes, not the 38 this was budgeted at.** That figure came from
 the development machine, where all twelve ports build from source on four

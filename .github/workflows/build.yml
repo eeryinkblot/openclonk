@@ -13,6 +13,33 @@ concurrency:
 env:
   GTEST_VERSION: "1.14.0"
 
+# How the jobs are split, since "same product, different shape" is a fair
+# question to ask of this file:
+#
+#   Platform checks   -- build, unit tests, packing, the scenario suite --
+#                        run once per platform.
+#   Content checks    -- the C4Script lint over planet/ -- run once, anywhere.
+#                        The script engine is platform-independent, and the
+#                        three platforms agreeing on it is what the scenario
+#                        suite already establishes. A second runner would
+#                        reprint the same 99 lines.
+#   Configuration     -- C4GROUP_TOOL_ONLY -- runs where it can actually fail.
+#   checks               On Windows the default target breaks (#19); on Linux
+#                        the same configuration succeeds by accident, because
+#                        PNG and JPEG headers are in /usr/include whether the
+#                        configuration looked for them or not.
+#
+# ubuntu and macOS share one matrix because they share their steps: 12 of the
+# 14 are byte-identical and only the dependency install differs. Windows is its
+# own job because none of its steps are the same -- different shell, /MP
+# instead of --parallel, ctest needs -C, hardlinks instead of symlinks, and no
+# stdin EOF to stop the engine with. Folding it into the matrix would mean an
+# `if:` on 12 of 14 steps, which is longer and harder to read than two honest
+# jobs.
+#
+# What must *not* differ is what the platforms assert. The scenario pins live
+# in tests/scenario-suite-expected.txt and are read by every job that runs the
+# suite.
 jobs:
   headless:
     name: Headless — ${{ matrix.os }}
@@ -225,15 +252,22 @@ jobs:
           # fixed the underlying bug, and the pin has to come down with it or it
           # starts protecting nothing -- which is how a guard like this rots.
           # The message says so.
-          expected_failures() {
-            case "$1" in
-              ObjectInteractionMenu) echo 14 ;;  # #51
-              *)                     echo 0  ;;
-            esac
-          }
+          # The pins and the scenario list both live in
+          # tests/scenario-suite-expected.txt, read here and by the Windows job.
+          # They used to be a case statement in this step and a literal in that
+          # one, which is two copies of the same numbers on two platforms with
+          # nothing keeping them equal.
           status=0
+          pins=tests/scenario-suite-expected.txt
 
-          for scenario in Stackable Producers LiquidContainer ObjectInteractionMenu Movement; do
+          # Strip comments and blank lines into a temporary file, and read the
+          # loop from that file rather than from a pipe: a piped while-loop runs
+          # in a subshell, and every status=1 set inside it would be discarded
+          # at the closing done.
+          sed -e 's/#.*//' -e '/^[[:space:]]*$/d' "$pins" > /tmp/pins.txt
+          cat /tmp/pins.txt
+
+          while read -r expected scenario; do
             log="scenario-$scenario.log"
             echo "::group::$scenario"
 
@@ -291,13 +325,13 @@ jobs:
               echo "::error::$scenario: $failed of $((passed + failed)) assertions failed, expected $expected"
               status=1
             elif [ "$failed" -lt "$expected" ]; then
-              echo "::error::$scenario: $failed failures, but $expected are pinned. If this is a fix, lower the pin in this workflow and close the issue it refers to."
+              echo "::error::$scenario: $failed failures, but $expected are pinned. If this is a fix, lower the pin in $pins and close the issue it refers to."
               status=1
             elif [ "$expected" -gt 0 ]; then
               echo "$scenario: $failed known failures, unchanged"
             fi
             echo "::endgroup::"
-          done
+          done < /tmp/pins.txt
 
           exit $status
 
@@ -316,7 +350,7 @@ jobs:
   # suite. It builds openclonk-server again, which costs about six minutes of
   # wall clock in parallel with the other jobs, and skips packing entirely.
   scenario-lint:
-    name: Content lint — every scenario
+    name: Content lint — ubuntu-latest
     runs-on: ubuntu-latest
     timeout-minutes: 45
 
@@ -391,7 +425,7 @@ jobs:
   # known to run on llvmpipe, so the display is not the obstacle it was assumed
   # to be for a long time.
   linux-client:
-    name: Linux client, editor and mape
+    name: Client, editor and mape — ubuntu-latest
     runs-on: ubuntu-latest
     timeout-minutes: 45
 
@@ -483,7 +517,7 @@ jobs:
           echo "GL loader, SDL2 and the full audio set are linked"
 
   macos-app:
-    name: macOS app bundle
+    name: App bundle — macos-latest
     runs-on: macos-latest
     timeout-minutes: 45
 
@@ -567,7 +601,7 @@ jobs:
   # StdCompiler, C4NetIO and the vendored zlib fork -- which is where this
   # fork's cross-platform changes live.
   windows-c4group:
-    name: Windows — c4group
+    name: c4group only — windows-latest
     runs-on: windows-latest
     timeout-minutes: 45
 
@@ -649,7 +683,7 @@ jobs:
   # engine needed no source change for any of it. See #20 and #30, and
   # fork-notes/platforms.md for the full account.
   windows-headless:
-    name: Windows — headless, tests and a scenario
+    name: Headless — windows-latest
     runs-on: windows-latest
     # Higher than the 45 the other jobs use. vcpkg builds its ports from source
     # on a cache miss, which took 38 minutes on the development machine, and
@@ -768,43 +802,91 @@ jobs:
       # No stdin dance, and none available: STDSCHEDULER_USE_EVENTS is defined
       # on Windows, so C4AbstractApp never registers C4StdInProc and the engine
       # cannot be stopped by closing stdin (C4AppT.cpp:34 says so outright).
-      # The process has to be killed, which is why this polls a redirected log
-      # rather than waiting for the process to exit.
+      # The process has to be killed, which is why this polls a log rather than
+      # waiting for the process to exit.
       #
       # The player file is passed by absolute path. A relative .ocp argument is
       # made absolute against the working directory and never consults C4Reloc,
       # so a bare Test.ocp resolves to nothing and no player joins -- and a
       # player that fails to load is not substituted, so the scenario reports
       # "Game started" having run no assertions at all (#27).
-      - name: Run a scenario
+      #
+      # Same five scenarios and the same pinned counts as the Unix jobs, from
+      # the same file. This used to run Movement.ocs alone against a literal
+      # zero, which meant Windows checked 6 assertions where Linux checked 912,
+      # and nothing made that visible.
+      - name: Run the scenario suite
         run: |
           $exe = "build\openclonk-server.exe"
           if (-not (Test-Path $exe)) { throw "no openclonk-server.exe was produced" }
-          $log = "scenario-Movement.log"
-          $p = Start-Process -FilePath $exe -PassThru -NoNewWindow `
-            -ArgumentList "--language=US", "$pwd\planet\Tests.ocf\Movement.ocs", "$pwd\planet\Test.ocp" `
-            -RedirectStandardOutput $log
-          # The engine writes %APPDATA%\OpenClonk\OpenClonk.log whatever else it
-          # does, so poll both: whichever of the two carries the harness output
-          # is the one this step then asserts on.
-          $appdata = Join-Path $env:APPDATA "OpenClonk\OpenClonk.log"
-          $done = "All tests have|At least one test has failed"
-          for ($i = 0; $i -lt 180; $i++) {
-            foreach ($f in $log, $appdata) {
-              if ((Test-Path $f) -and (Select-String -Path $f -Pattern $done -Quiet)) { $log = $f }
-            }
-            if ((Test-Path $log) -and (Select-String -Path $log -Pattern $done -Quiet)) { break }
-            Start-Sleep -Seconds 1
-          }
-          Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
-          Write-Host "reading $log"
-          Get-Content $log
 
-          if (-not (Select-String -Path $log -Pattern "Player join: Test" -Quiet)) {
-            throw "no player joined, so no assertion ran"
+          $pins = "tests\scenario-suite-expected.txt"
+          $status = 0
+          $done = "All tests have|At least one test has failed"
+          $appdata = Join-Path $env:APPDATA "OpenClonk\OpenClonk.log"
+
+          foreach ($line in Get-Content $pins) {
+            $line = ($line -replace '#.*', '').Trim()
+            if (-not $line) { continue }
+            $expected, $scenario = $line -split '\s+', 2
+            $expected = [int]$expected
+            $scenario = $scenario.Trim()
+            Write-Host "::group::$scenario"
+
+            $log = "scenario-$scenario.log"
+            Remove-Item $appdata -ErrorAction SilentlyContinue
+            $p = Start-Process -FilePath $exe -PassThru -NoNewWindow `
+              -ArgumentList "--language=US", "$pwd\planet\Tests.ocf\$scenario.ocs", "$pwd\planet\Test.ocp" `
+              -RedirectStandardOutput $log
+
+            # The engine writes %APPDATA%\OpenClonk\OpenClonk.log whatever else
+            # it does, so poll both and keep whichever carries the harness
+            # output. ObjectInteractionMenu is the slow one at about 40 seconds.
+            $read = $log
+            for ($i = 0; $i -lt 180; $i++) {
+              foreach ($f in $log, $appdata) {
+                if ((Test-Path $f) -and (Select-String -Path $f -Pattern $done -Quiet)) { $read = $f }
+              }
+              if ((Test-Path $read) -and (Select-String -Path $read -Pattern $done -Quiet)) { break }
+              Start-Sleep -Seconds 1
+            }
+            Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+            Start-Sleep -Milliseconds 500
+
+            if (-not (Select-String -Path $read -Pattern "Player join: Test" -Quiet)) {
+              Write-Host "::error::${scenario}: no player joined, so no assertion ran"
+              Get-Content $read -Tail 20
+              $status = 1
+              Write-Host "::endgroup::"
+              continue
+            }
+            if (-not (Select-String -Path $read -Pattern "C4AulScriptEngine linked - .*, 0 warnings, 0 errors" -Quiet)) {
+              Write-Host "::error::${scenario}: script engine reported warnings or errors"
+              $status = 1
+            }
+
+            $passed = @(Select-String -Path $read -Pattern "\[Pass\]").Count
+            $failed = @(Select-String -Path $read -Pattern "\[Fail\]").Count
+            Write-Host "${scenario}: $passed passed, $failed failed"
+
+            if ($passed -eq 0) {
+              Write-Host "::error::${scenario}: the harness ran but executed no assertions"
+              $status = 1
+            }
+            if ($failed -gt 0) {
+              Select-String -Path $read -Pattern "\[Fail\]" | Select-Object -First 20 |
+                ForEach-Object { $_.Line }
+            }
+            if ($failed -gt $expected) {
+              Write-Host "::error::${scenario}: $failed of $($passed + $failed) assertions failed, expected $expected"
+              $status = 1
+            } elseif ($failed -lt $expected) {
+              Write-Host "::error::${scenario}: $failed failures, but $expected are pinned. If this is a fix, lower the pin in $pins and close the issue it refers to."
+              $status = 1
+            } elseif ($expected -gt 0) {
+              Write-Host "${scenario}: $failed known failures, unchanged"
+            }
+            Write-Host "::endgroup::"
           }
-          $fails = @(Select-String -Path $log -Pattern "\[Fail\]").Count
-          if ($fails -ne 0) { throw "Movement.ocs: $fails assertions failed, expected 0" }
-          $passes = @(Select-String -Path $log -Pattern "\[Pass\]").Count
-          if ($passes -eq 0) { throw "Movement.ocs reported no assertions at all" }
-          Write-Host "Movement.ocs: $passes assertions passed, 0 failed"
+
+          exit $status
