@@ -32,11 +32,12 @@ What it does *not* mean, since the table is easy to over-read:
   Homebrew, so `src/editor/` is compiled by nothing there (#46).
 - **`mape` is built on one and run on none.** It needs GTK3, so it does not
   exist on macOS or Windows; CI compiles it on Linux since 3f0b9374d.
-- **CI covers less than the machines do.** `HEADLESS_ONLY` on all three
-  runners since `5198b01c6`, `C4GROUP_TOOL_ONLY` on Windows, and a Linux client
-  build that compiles the editor and `mape` but launches nothing (#45).
-  Everything else in this table is one machine, by hand, once — and the *full*
-  build is still one of those on Windows and macOS.
+- **CI covers less than the machines do, but the gap has closed a long way.**
+  `HEADLESS_ONLY` on all three runners since `5198b01c6`,
+  `C4GROUP_TOOL_ONLY` on Windows, a sanitizer job, and a Linux client that is
+  compiled *and launched* under Xvfb since `808f9cddd` — llvmpipe reports
+  `GL 4.5 (Core Profile)` there. What is still one machine, by hand, once: the
+  full build on Windows and macOS, and every GUI launch except the Linux one.
 - **A configuration that builds is not a configuration that is exercised.** See
   the `C4GROUP_TOOL_ONLY` note below, where Linux succeeds by accident of where
   its headers live.

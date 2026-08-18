@@ -20,16 +20,21 @@ matrix is "derived" any more.
 
 | | |
 | --- | --- |
-| CI jobs | 8, all green: Linux headless, Linux client, content lint, sanitizers, macOS headless, macOS app bundle, Windows c4group, Windows headless |
+| CI jobs | 8, all green. The Linux client is now **launched**, not just built |
 | Unit tests | 101 over four binaries (`tests`, `aul_test`, `StdMeshMath`, `determinism`), plus 2 disabled that state a known defect (#47) |
 | Scenario assertions in CI | 912, on **all three** platforms, agreeing assertion for assertion |
 | Known failing | 14 assertions, all in `ObjectInteractionMenu.ocs`, pinned so they cannot silently grow (#51) |
 | Scenarios script-linted | 99 of 99, 92 of them clean; the other 7 pinned and undiagnosed |
 
-What CI does **not** do: launch anything (#45), or build a *client* on Windows
-or macOS beyond the app bundle. The 69 real game scenarios are loaded
+What CI does **not** do: build a *client* on Windows, or launch the macOS
+bundle. The Linux client is built, launched under Xvfb and asserted on. The 69 real game scenarios are loaded
 now, but only linted — nothing asserts what they *do*, since they carry no
 `doTest()`.
+
+**Steps 1 to 5 and 7 are done.** What is left is #50, the Qt6 editor port, and
+the investigations in step 8 — plus the two lists this work produced: #56 (the
+twelve undefined-behaviour sites the sanitizer job pins) and #55 (the seven
+scenarios that do not link cleanly).
 
 ## The order
 
@@ -150,28 +155,27 @@ mouse handler alone.
 
 ---
 
-### 7. CI breadth: #45
+### ~~7. CI breadth~~ — done
 
-**#45** — launch the engine under `xvfb`, and the last item on this list that is
-plain coverage rather than open-ended work. Cheap now that the `linux-client`
-job exists: one apt package and a launch step, not a new build. The engine runs
-on llvmpipe at GL 4.6 Core, verified, so software rendering was never the
-obstacle it was assumed to be. A menu smoke test would also be the thing that
-eventually catches #37.
+All three are in, and each cost less than this page predicted.
 
-~~**#54** — a sanitizer job~~ — **done**, `240293816`. ASan gates outright and
-reports nothing across the test binaries, packing and a scenario; UBSan has
-twelve pinned sites. Two of them were found by the scenario run and by nothing
-else: `fill_edge_structure()` in the landscape shifts negative coordinates left,
-which is undefined before C++20. See #56 for what to do about the twelve.
+~~**#45** — launch the engine under `xvfb`~~ — `808f9cddd`. One apt package, one
+second to install, and the runner renders on llvmpipe at `GL 4.5 (Core
+Profile)`. The gate asserts a GL context, graphics loading and the process
+surviving; a second step starts the engine five times against an empty user
+directory to hunt #37 and reports without gating, because a one-in-six crash
+makes a poor gate. First run: 0 of 5.
 
-~~**#30** — Windows beyond `c4group`~~ — **done**, `5198b01c6`. It was billed
-here as "the largest single coverage gap and the most expensive: about 38
-minutes". The gap was real; the cost was not. The job takes **7 minutes**, of
-which vcpkg is two — on a cache *miss* — because the hosted runner has those
-four ports available where the development machine builds all twelve from
-source. What had actually blocked it was #29, fixed earlier, plus a cost
-estimate nobody had checked.
+~~**#54** — a sanitizer job~~ — `240293816`. ASan gates outright and reports
+nothing across the test binaries, packing and a scenario; UBSan has twelve
+pinned sites, now tracked as #56. Two of them are reported by the scenario and
+by nothing else.
+
+~~**#30** — Windows beyond `c4group`~~ — `5198b01c6`. Billed here as "the
+largest single coverage gap and the most expensive: about 38 minutes". The gap
+was real; the cost was not — the job takes **7 minutes**, vcpkg two of them on a
+cache *miss*. What had blocked it was #29, fixed earlier, plus an estimate
+nobody rechecked.
 
 ### 8. Investigations with no known bottom
 

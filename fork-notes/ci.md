@@ -265,8 +265,35 @@ neither macOS nor Windows.
 | Assert ≥15 objects under `openclonk.dir/src/editor` and Qt5 in `ldd` | `src/editor/` being added to `OC_GUI_SOURCES`, so a successful link does not prove it was compiled |
 | Assert `ldd` shows epoxy, SDL2, OpenAL, ALUT, vorbisfile | A client that builds without the graphics or audio it exists for |
 
-It **does not launch anything**. That needs `xvfb` and is #45 — the engine runs
-on llvmpipe, so the display was never the obstacle it was taken for.
+**It launches the engine**, since `808f9cddd` — the only job anywhere that runs
+a client rather than inspecting one:
+
+| Step | Guards against |
+| --- | --- |
+| Start under `xvfb-run` with a throwaway config, assert a GL context, `Loading graphics...`, and that the process is still alive | `C4Window`, `C4DrawGL` and the SDL main loop compiling but not working |
+| Five first-run launches against an empty user directory, **not gating** | nothing — it is evidence-gathering for #37 |
+
+The gate takes the *stable* path deliberately. `C4StartupMainDlg::OnShown` opens
+a modal player-creation dialog when the user directory holds no `*.ocp`, and
+that is where #37 crashes, roughly one launch in six by hand. Gating on it would
+make the job flaky for a defect it cannot fix, so the gate gets a player file
+copied in and the hunt runs beside it with `continue-on-error`. First run on a
+runner: **0 of 5 died**, `GL 4.5 (Core Profile) Mesa 25.2.8 on llvmpipe`.
+
+Costs 13 seconds for the launch and 25 for the hunt, on a job whose build alone
+is 398.
+
+Three things that had to be right, all found by running it on a development
+machine first (offscreen through `SDL_VIDEODRIVER`, since that machine has no
+Xvfb either):
+
+- `planet/Test.ocp` is an unpacked player, i.e. a **directory**, so the copy
+  needs `-r`.
+- `--language=US` is not decoration: `Loading graphics...` is `IDS_PRC_GFXRES`
+  from the string table, so the assertion only holds in that language.
+- The engine **rewrites the config file it is given** on exit, with its whole
+  configuration rather than the keys it was handed. Harmless, and confusing if
+  you read the file afterwards looking for your three lines.
 
 The three assertions all failed at least once on a developer machine before
 being written: `FindAudio` needs OpenAL *and* ALUT *and* Ogg/Vorbis together and
@@ -457,14 +484,15 @@ machine ever ticks. See [ADR-009](decisions.md#adr-009--hold-stdin-open-in-ci-in
   no Qt5 from Homebrew, so `src/editor/` is still compiled by nothing there, and
   anything platform-specific in it is unguarded — including the editor branch of
   the mouse handler #8 deliberately left alone. #46.
-- **Actually running the GUI.** `macos-app` builds and inspects the bundle but
-  never launches it, and no job builds a client on Linux at all.
+- **Running the GUI anywhere but Linux.** `linux-client` launches the engine
+  under Xvfb now. `macos-app` still builds and inspects the bundle without
+  starting it, and Windows builds no client at all.
 
-  **"No display on the runner" is not the obstacle it has been treated as.**
-  `xvfb-run` is one apt package, and the engine does not need a GPU: it runs on
-  llvmpipe at `GL 4.6 (Core Profile)` and renders the full main menu, verified
-  on the Linux machine with `LIBGL_ALWAYS_SOFTWARE=1`. The real cost is a
-  `HEADLESS_ONLY=OFF` build in CI, which nothing does yet. #45.
+  **"No display on the runner" was never the obstacle it was treated as**, and
+  is now settled rather than argued: `xvfb-run` is one apt package, one second
+  to install, and the runner reports `GL 4.5 (Core Profile) Mesa 25.2.8 on
+  llvmpipe`. The cost that was real — a `HEADLESS_ONLY=OFF` build — was already
+  being paid by `linux-client`. #45.
 - **Most of the fixes themselves.** The unit tests cover `libmisc` and
   `libc4script`. What guards the rest is the scenario run, the bundle checks and
   the Windows round-trip.
