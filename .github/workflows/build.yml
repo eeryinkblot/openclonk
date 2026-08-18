@@ -317,7 +317,6 @@ jobs:
               status=1
             fi
 
-            expected=$(expected_failures "$scenario")
             if [ "$failed" -gt 0 ]; then
               grep -E "\[Fail\]" "$log" | head -20
             fi
