@@ -20,14 +20,14 @@ matrix is "derived" any more.
 
 | | |
 | --- | --- |
-| CI jobs | 6, all green: Linux headless, Linux client, content lint, macOS headless, macOS app bundle, Windows c4group |
+| CI jobs | 7, all green: Linux headless, Linux client, content lint, macOS headless, macOS app bundle, Windows c4group, Windows headless |
 | Unit tests | 101 over four binaries (`tests`, `aul_test`, `StdMeshMath`, `determinism`), plus 2 disabled that state a known defect (#47) |
 | Scenario assertions in CI | 912, across the five scenarios that have any |
 | Known failing | 14 assertions, all in `ObjectInteractionMenu.ocs`, pinned so they cannot silently grow (#51) |
 | Scenarios script-linted | 99 of 99, 92 of them clean; the other 7 pinned and undiagnosed |
 
-What CI does **not** do: launch anything (#45), build a client on Windows or
-macOS (#30), or run a sanitizer (#54). The 69 real game scenarios are loaded
+What CI does **not** do: launch anything (#45), build a *client* on Windows or
+macOS beyond the app bundle, or run a sanitizer (#54). The 69 real game scenarios are loaded
 now, but only linted — nothing asserts what they *do*, since they carry no
 `doTest()`.
 
@@ -116,12 +116,13 @@ Nothing in `src/` uses what C++17 removed — the grep for `auto_ptr`,
 `bind1st`, `random_shuffle`, `unary_function` and `std::iterator` comes back
 empty, and every `register` is a word in a comment.
 
-**What CI settled, and what it did not.** All six jobs went green on the first
-run, so clang builds the engine, the app bundle and a client under C++17 too.
-The gap is Windows: that job builds only `c4group`, which links `libmisc` alone,
-so **MSVC has compiled the archive layer and nothing else** — not
-`libc4script`, not the engine, not the editor. That is one hand-build on the
-Windows machine away from being settled, and is the same gap #30 exists for.
+**Settled, including the part that was still open when this was written.** All
+jobs went green on the first run, so clang builds the engine, the app bundle and
+a client under C++17. The MSVC gap — only `libmisc` compiled, through
+`c4group` — closed the next day with `windows-headless` (#30): MSVC now builds
+the whole headless engine under C++17, passes all four unit-test binaries and
+runs a scenario. What remains unbuilt under MSVC is the editor and the GUI
+client, which no CI job builds on any platform except Linux.
 
 Consequences: googletest has no upper bound any more (nothing needs one), and
 #50 becomes possible. Why not C++20 is ADR-023 — `throw()` is removed there,
@@ -149,7 +150,7 @@ mouse handler alone.
 
 ---
 
-### 7. CI breadth: #45, then #30
+### 7. CI breadth: #45, and now #54
 
 **#45** — launch the engine under `xvfb`. Cheap now that the `linux-client` job
 exists: it needs one apt package and a launch step, not a new build. The engine
@@ -157,16 +158,18 @@ runs on llvmpipe at GL 4.6 Core, verified, so software rendering is not the
 obstacle it was assumed to be for a long time. A menu smoke test would also be
 the thing that eventually catches #37.
 
-**#54** — a sanitizer job, which slots in beside #45 and is cheaper. ASan is
-clean over all 101 unit tests today, so it can gate from the first run; UBSan
-has ten sites and wants the same pinned-list treatment as everything else here.
-It is the only proposal on this page that would have caught #41, and #41 is the
-kind of defect that is otherwise found by reading.
+**#54** — a sanitizer job, and the strongest remaining candidate. ASan is clean
+over all 101 unit tests today, so it can gate from the first run; UBSan has ten
+sites and wants the same pinned-list treatment as everything else here. It is
+the only proposal on this page that would have caught #41.
 
-**#30** — Windows beyond `c4group`. The largest single coverage gap and the most
-expensive: all twelve vcpkg ports build from source, about 38 minutes, though it
-caches. Everything it would cover is verified by hand on the Windows machine
-already, so this buys regression protection rather than knowledge.
+~~**#30** — Windows beyond `c4group`~~ — **done**, `5198b01c6`. It was billed
+here as "the largest single coverage gap and the most expensive: about 38
+minutes". The gap was real; the cost was not. The job takes **7 minutes**, of
+which vcpkg is two — on a cache *miss* — because the hosted runner has those
+four ports available where the development machine builds all twelve from
+source. What had actually blocked it was #29, fixed earlier, plus a cost
+estimate nobody had checked.
 
 ### 8. Investigations with no known bottom
 

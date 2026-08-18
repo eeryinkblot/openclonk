@@ -707,11 +707,11 @@ positions the C++14 build produces.
 all three machines stay on the 1.14.0 they have unpacked. #50 becomes possible.
 
 CI went green on all six jobs at the first attempt, which extends the result to
-clang across the engine, the app bundle and a client. The remaining gap is
-MSVC: the Windows job builds only `c4group`, which links `libmisc` alone, so
-`libc4script`, `libopenclonk`, the engine and the editor have not been compiled
-under C++17 by that compiler. One hand-build on the Windows machine closes it —
-the same gap #30 exists for.
+clang across the engine, the app bundle and a client. The MSVC gap named here —
+only `libmisc`, through `c4group` — closed a day later with the headless Windows
+job (#30, `5198b01c6`), which builds the whole engine under C++17 on MSVC, runs
+the unit tests and starts a scenario. The editor and the GUI client remain
+uncompiled under C++17 anywhere but Linux.
 
 ## ADR-021 — Guard the resort at the call site, not in `SortByList`
 

@@ -228,8 +228,62 @@ successful Windows build of this codebase in about five years. Two upstream
 defects had to be fixed to get there, both in configurations evidently never
 used on that platform: see sections 14 and 15 of [divergence.md](divergence.md).
 
+### `windows-headless` — `windows-latest`
+
+The gap `windows-c4group` left, and the one that mattered most after the move to
+C++17: that job builds `c4group`, which links `libmisc` and nothing else, so
+MSVC had compiled the archive layer and never seen `libc4script`,
+`libopenclonk` or the engine under the new standard.
+
+This one mirrors the Unix `headless` job — configure `HEADLESS_ONLY`, build
+everything, run all four test binaries through ctest, pack the game data,
+reject empty archives, stage the groups and start a scenario with a real player
+file. Green on its first run, and the scenario landed the rock at `[372, 157]`,
+which is one of the two values Linux produces.
+
+**It costs 7 minutes, not the 38 this was budgeted at.** That figure came from
+the development machine, where all twelve ports build from source on four
+cores; the hosted runner has these four available and installs them in two
+minutes *on a cache miss*. Measured breakdown of the first run:
+
+| Step | |
+| --- | --- |
+| `vcpkg install zlib libpng libjpeg-turbo curl` | 120s (cache miss) |
+| Build the engine | 158s |
+| Build the four test targets | 60s |
+| ctest | 1s |
+| Pack twelve groups | 13s |
+| Run `Movement.ocs` | 11s |
+
+So the reason this waited was never the cost. It was #29 — the `groups` target
+could not invoke `c4group` under MSBuild — and the assumption that it would be
+expensive, which nobody had checked.
+
+Four things differ from the Unix jobs, each paid for by hand on the Windows
+machine first:
+
+- **No `--parallel`.** `/MP` is already on `CMAKE_CXX_FLAGS` in the MSVC branch,
+  so MSBuild is parallel per project already.
+- **No stdin trick, and none available.** `STDSCHEDULER_USE_EVENTS` is defined
+  here, so `C4AbstractApp` never registers `C4StdInProc` and the engine cannot
+  be stopped by closing stdin (`C4AppT.cpp:34` says so). The scenario step polls
+  a log and kills the process, and reads either the redirected stdout or
+  `%APPDATA%\OpenClonk\OpenClonk.log`, whichever carries the harness output.
+- **Hardlinks, not symlinks.** A symlink needs a privilege the runner lacks.
+- **Git's `tar` shadows the system one** and treats a drive letter as a remote
+  host, so googletest arrives as a zip through `Expand-Archive`.
+
+Kept separate from `windows-c4group` rather than folded into it: they are
+different configurations — `C4GROUP_TOOL_ONLY` is the one that guards #19 — and
+two jobs run in parallel rather than in sequence.
+
+What it still does not cover: the full GUI build (openal-soft, freealut,
+ogg/vorbis, epoxy and freetype on top) and launching it, which is the same limit
+`macos-app` has.
+
 Typical runtimes: Linux headless ≈ 5 min, Linux client ≈ 7 min, macOS headless
-≈ 6 min, macOS app ≈ 4.5 min, Windows ≈ 1.5 min. The five-scenario suite is
+≈ 6 min, macOS app ≈ 4.5 min, Windows c4group ≈ 1.5 min, Windows headless ≈ 7
+min. The five-scenario suite is
 about 70 s of that, less than the single scenario used to cost. The client job costs
 no more than the headless one despite building the editor and mape on top —
 the runner has more cores than the build has serial work.

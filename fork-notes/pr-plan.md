@@ -225,7 +225,7 @@ fix sees it was considered; [ADR-018](decisions.md) has the reasoning.
 
 | | |
 | --- | --- |
-| Commits | the `.github/workflows/build.yml` series, starting `91b545a07`; latest `3f0b9374d`, `2e9855c3d`, `65a61cce6`, `013d76873` (workflow hunk only), `592b7b754` |
+| Commits | the `.github/workflows/build.yml` series, starting `91b545a07`; latest `3f0b9374d`, `2e9855c3d`, `65a61cce6`, `013d76873` (workflow hunk only), `592b7b754`, `5198b01c6` |
 | Files | `.github/workflows/build.yml` |
 | Effect | Replaces the dead Travis and AppVeyor configuration |
 

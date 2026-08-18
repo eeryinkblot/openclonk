@@ -19,7 +19,7 @@ went into things that looked verified and were not.
 | --- | --- | --- | --- | --- |
 | macOS arm64 | verified here | verified here + CI | verified here + CI | **yes**, played |
 | Linux x86_64 | **verified here** | verified here + CI | **verified here** | **yes**, launched |
-| Windows x64 | verified in CI | **verified here** | **verified here** | **yes**, launched |
+| Windows x64 | verified in CI | verified here **+ CI** | **verified here** | **yes**, launched |
 
 **No cell in that table is "derived" any more.** Every configuration has been
 run on the machine it claims, and the engine launches on all three. Reaching it
@@ -32,10 +32,11 @@ What it does *not* mean, since the table is easy to over-read:
   Homebrew, so `src/editor/` is compiled by nothing there (#46).
 - **`mape` is built on one and run on none.** It needs GTK3, so it does not
   exist on macOS or Windows; CI compiles it on Linux since 3f0b9374d.
-- **CI covers less than the machines do.** `HEADLESS_ONLY` on two runners,
-  `C4GROUP_TOOL_ONLY` on Windows, and a Linux client build that compiles the
-  editor and `mape` but launches nothing (#45). Everything else in this table is
-  one machine, by hand, once.
+- **CI covers less than the machines do.** `HEADLESS_ONLY` on all three
+  runners since `5198b01c6`, `C4GROUP_TOOL_ONLY` on Windows, and a Linux client
+  build that compiles the editor and `mape` but launches nothing (#45).
+  Everything else in this table is one machine, by hand, once — and the *full*
+  build is still one of those on Windows and macOS.
 - **A configuration that builds is not a configuration that is exercised.** See
   the `C4GROUP_TOOL_ONLY` note below, where Linux succeeds by accident of where
   its headers live.
@@ -595,6 +596,14 @@ The Visual Studio generator locates MSBuild by itself, so no `vcvars64.bat` is
 needed.
 
 All twelve ports build from source. Budget for it: **38 minutes** on four cores.
+
+**That number is about this machine and does not transfer to CI.** The
+`windows-headless` job installs the four packages `HEADLESS_ONLY` needs in
+**120 seconds on a cache miss**, because the hosted runner image has them
+available rather than building them. The whole job — engine, four test
+binaries, packing twelve groups and a scenario — is 7 minutes. The assumption
+that extending Windows CI would be expensive held this back longer than the
+defect that actually blocked it (#29).
 
 ```powershell
 C:\Development\vcpkg\vcpkg.exe install --triplet x64-windows `

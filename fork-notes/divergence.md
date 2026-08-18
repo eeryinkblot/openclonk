@@ -1382,11 +1382,16 @@ Linux headless, the Linux client with the Qt5 editor and `mape`, the content
 lint, macOS headless, the macOS app bundle and Windows `c4group`. So clang
 compiles the whole engine and a client under C++17 as well.
 
-What is left is narrower but is the interesting part. The Windows job builds
-**only `c4group`**, which links `libmisc` and nothing else — so MSVC has
-compiled the archive layer under C++17 and not `libc4script`, `libopenclonk`,
-the engine or the editor. MSVC is strict in different places than GCC and clang,
-and the full Windows build is by hand. A revert is one commit if it disagrees.
+The MSVC gap that was open when this was written closed the next day. At the
+time the Windows job built only `c4group`, which links `libmisc` and nothing
+else, so MSVC had compiled the archive layer under C++17 and none of the engine.
+`5198b01c6` (#30) added a headless Windows job: MSVC builds `libc4script`,
+`libopenclonk` and the whole engine under C++17, passes all four unit-test
+binaries and runs `Movement.ocs` to 3 of 3 with the rock at `[372, 157]` — the
+same value Linux produces.
+
+What no CI job compiles under C++17 on any platform but Linux is the editor and
+the GUI client. A revert is still one commit if that turns out to disagree.
 
 ---
 
