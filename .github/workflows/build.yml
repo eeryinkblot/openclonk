@@ -633,3 +633,178 @@ jobs:
           # non-zero code we just asserted on. Reset it, or the step fails for
           # having successfully verified a failure.
           exit 0
+
+  # The largest coverage gap this workflow had, and the one that got larger the
+  # day the project moved to C++17: the job above builds only `c4group`, which
+  # links `libmisc` and nothing else, so MSVC had compiled the archive layer and
+  # not `libc4script`, `libopenclonk` or the engine. This job compiles all of
+  # them, runs the unit tests, packs the game data and starts a scenario.
+  #
+  # Kept separate from `windows-c4group` rather than folded into it. They are
+  # different configurations -- C4GROUP_TOOL_ONLY still defines libraries it
+  # never looks for dependencies for (#19), which is exactly what that job
+  # guards -- and as two jobs they run in parallel instead of in sequence.
+  #
+  # Everything here was verified by hand on a Windows 11 machine first, and the
+  # engine needed no source change for any of it. See #20 and #30, and
+  # fork-notes/platforms.md for the full account.
+  windows-headless:
+    name: Windows — headless, tests and a scenario
+    runs-on: windows-latest
+    # Higher than the 45 the other jobs use. vcpkg builds its ports from source
+    # on a cache miss, which took 38 minutes on the development machine, and
+    # roughly 500 translation units follow it.
+    timeout-minutes: 90
+
+    steps:
+      - uses: actions/checkout@v5
+
+      # vcpkg's default binary cache. A miss rebuilds four ports from source and
+      # dominates the job; a hit turns the install step into an unpack. The key
+      # names the package set rather than hashing a file, so editing anything
+      # else in this workflow does not throw the cache away -- change the list,
+      # change the suffix.
+      - name: Cache vcpkg binaries
+        uses: actions/cache@v4
+        with:
+          path: ~\AppData\Local\vcpkg\archives
+          key: vcpkg-x64-windows-zlib-libpng-jpegturbo-curl-v1
+
+      # The four packages HEADLESS_ONLY actually requires. Freetype and epoxy
+      # are excluded by the option itself; SDL2 is REQUIRED only under
+      # USE_SDL_MAINLOOP, which loses to USE_WIN32_WINDOWS on this platform.
+      - name: Install dependencies
+        run: >
+          vcpkg install zlib:x64-windows libpng:x64-windows
+          libjpeg-turbo:x64-windows curl:x64-windows
+
+      # Same version and the same reasoning as the Unix jobs, but fetched as a
+      # zip and unpacked with Expand-Archive: Git's tar ships ahead of the
+      # system one on PATH here and treats an argument containing a drive letter
+      # as a remote host.
+      - name: Fetch googletest sources
+        run: |
+          curl.exe -sSL -o gtest.zip `
+            "https://github.com/google/googletest/archive/refs/tags/v$env:GTEST_VERSION.zip"
+          Expand-Archive -Path gtest.zip -DestinationPath . -Force
+
+      - name: Configure
+        run: |
+          $gt = "$pwd/googletest-$env:GTEST_VERSION"
+          cmake -B build -A x64 -DHEADLESS_ONLY=ON `
+            -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" `
+            -DVCPKG_TARGET_TRIPLET=x64-windows `
+            -DGTEST_ROOT="$gt/googletest" -DGMOCK_ROOT="$gt/googlemock" . |
+            Tee-Object -FilePath configure.log
+          if (Select-String -Path configure.log -Pattern "Could NOT find GTest" -Quiet) {
+            throw "googletest sources were not picked up"
+          }
+
+      # No --parallel: the MSVC branch of CMakeLists.txt already puts /MP on
+      # CMAKE_CXX_FLAGS, so MSBuild is parallel per project and adding job-level
+      # parallelism oversubscribes the runner.
+      - name: Build
+        run: cmake --build build --config RelWithDebInfo
+
+      - name: Build test targets
+        run: >
+          cmake --build build --config RelWithDebInfo
+          --target tests aul_test StdMeshMath determinism
+
+      # ctest needs -C on a multi-config generator, and the manifest lives in
+      # build/tests because enable_testing() is called from tests/CMakeLists.txt
+      # rather than the top level. Assert all four binaries are registered
+      # first: a target added without add_test() drops out of the run silently.
+      #
+      # Expect 74 rather than the 72 the Unix jobs see. `tests` runs 17 cases
+      # here because UnicodeHandlingTest has two registry cases that only exist
+      # on Windows. The count is not asserted -- the suites are -- but a sudden
+      # 72 here would be worth looking at.
+      - name: Unit tests
+        run: |
+          $listing = ctest --test-dir build/tests -C RelWithDebInfo -N
+          $listing
+          foreach ($t in "tests", "aul_test", "StdMeshMath", "determinism") {
+            if (-not ($listing | Select-String -Pattern ('Test\s+#\d+:\s+' + $t + '$') -Quiet)) {
+              throw "$t is not registered with ctest"
+            }
+          }
+          ctest --test-dir build/tests -C RelWithDebInfo --output-on-failure
+
+      # Packing on this generator was impossible until b0ce04384: CMake
+      # relativises a custom command against the build directory, so MSBuild
+      # invoked a c4group path that does not exist and failed with MSB8066 code
+      # 9009 before a single group was written. #29.
+      - name: Pack game data
+        run: cmake --build build --config RelWithDebInfo --target groups
+
+      # c4group exits 0 even when packing fails, so the build reports success
+      # while writing zero-byte archives. Check the output, not the exit code.
+      - name: Reject empty group files
+        run: |
+          $bad = $false
+          Get-ChildItem build\* -Include *.ocf,*.ocg,*.ocd,*.ocm | ForEach-Object {
+            "{0,10}  {1}" -f $_.Length, $_.Name
+            if ($_.Length -eq 0) {
+              Write-Host "::error::$($_.Name) is empty — packing failed silently"
+              $bad = $true
+            }
+          }
+          if ($bad) { exit 1 }
+
+      # Hardlinks rather than symlinks: creating a symlink needs a privilege the
+      # runner does not have, and a hardlink stages the groups just as well.
+      # The engine looks for `planet` next to the executable, and
+      # oc_set_target_names() puts openclonk-server.exe in the build root rather
+      # than build/<Config>/.
+      - name: Stage packed game data next to the binary
+        run: |
+          New-Item -ItemType Directory -Force build\planet | Out-Null
+          Get-ChildItem build\* -Include *.ocf,*.ocg,*.ocd,*.ocm | ForEach-Object {
+            New-Item -ItemType HardLink -Path "build\planet\$($_.Name)" -Target $_.FullName -Force | Out-Null
+          }
+          Get-ChildItem build\planet | Select-Object Name, Length
+
+      # No stdin dance, and none available: STDSCHEDULER_USE_EVENTS is defined
+      # on Windows, so C4AbstractApp never registers C4StdInProc and the engine
+      # cannot be stopped by closing stdin (C4AppT.cpp:34 says so outright).
+      # The process has to be killed, which is why this polls a redirected log
+      # rather than waiting for the process to exit.
+      #
+      # The player file is passed by absolute path. A relative .ocp argument is
+      # made absolute against the working directory and never consults C4Reloc,
+      # so a bare Test.ocp resolves to nothing and no player joins -- and a
+      # player that fails to load is not substituted, so the scenario reports
+      # "Game started" having run no assertions at all (#27).
+      - name: Run a scenario
+        run: |
+          $exe = "build\openclonk-server.exe"
+          if (-not (Test-Path $exe)) { throw "no openclonk-server.exe was produced" }
+          $log = "scenario-Movement.log"
+          $p = Start-Process -FilePath $exe -PassThru -NoNewWindow `
+            -ArgumentList "--language=US", "$pwd\planet\Tests.ocf\Movement.ocs", "$pwd\planet\Test.ocp" `
+            -RedirectStandardOutput $log
+          # The engine writes %APPDATA%\OpenClonk\OpenClonk.log whatever else it
+          # does, so poll both: whichever of the two carries the harness output
+          # is the one this step then asserts on.
+          $appdata = Join-Path $env:APPDATA "OpenClonk\OpenClonk.log"
+          $done = "All tests have|At least one test has failed"
+          for ($i = 0; $i -lt 180; $i++) {
+            foreach ($f in $log, $appdata) {
+              if ((Test-Path $f) -and (Select-String -Path $f -Pattern $done -Quiet)) { $log = $f }
+            }
+            if ((Test-Path $log) -and (Select-String -Path $log -Pattern $done -Quiet)) { break }
+            Start-Sleep -Seconds 1
+          }
+          Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+          Write-Host "reading $log"
+          Get-Content $log
+
+          if (-not (Select-String -Path $log -Pattern "Player join: Test" -Quiet)) {
+            throw "no player joined, so no assertion ran"
+          }
+          $fails = @(Select-String -Path $log -Pattern "\[Fail\]").Count
+          if ($fails -ne 0) { throw "Movement.ocs: $fails assertions failed, expected 0" }
+          $passes = @(Select-String -Path $log -Pattern "\[Pass\]").Count
+          if ($passes -eq 0) { throw "Movement.ocs reported no assertions at all" }
+          Write-Host "Movement.ocs: $passes assertions passed, 0 failed"
