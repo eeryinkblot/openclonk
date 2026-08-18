@@ -663,6 +663,151 @@ jobs:
           done
           echo "GL loader, SDL2 and the full audio set are linked"
 
+      # The first job to *start* the engine anywhere. Everything else compiles a
+      # client and inspects the result: macos-app builds a bundle and never
+      # launches it, and until now "no display on the runner" was treated as a
+      # hard limit here too. It is not one -- xvfb is a package, and the engine
+      # runs on llvmpipe at GL 4.6 Core, so software rasterisation is enough to
+      # reach the menu. #45.
+      #
+      # This covers what compiling cannot: that a GL context is actually
+      # created, that C4Window and the SDL main loop work, and that
+      # C4StartupMainDlg gets as far as drawing itself.
+      - name: Install a virtual X server
+        run: sudo apt-get install -y --no-install-recommends xvfb
+
+      - name: Pack and stage game data for the client
+        run: |
+          cmake --build build-client --target groups --parallel 1
+          mkdir -p build-client/planet
+          for f in build-client/*.oc*; do
+            ln -sf "../$(basename "$f")" "build-client/planet/$(basename "$f")"
+          done
+
+      # A throwaway config, so nothing depends on a runner's home directory and
+      # nothing is left behind in it.
+      #
+      # The player file is the point of the UserDataPath, not decoration.
+      # C4StartupMainDlg::OnShown scans that directory for *.ocp and opens a
+      # modal "create a player" dialog when it finds none -- which is the path
+      # #37 crashes in, roughly one launch in six. Gating on it would make this
+      # job flaky for a defect it cannot fix, so the gate takes the stable path
+      # and the step after this one hunts the crash without gating.
+      #
+      # Windowed=1 keeps the engine from asking Xvfb for a mode switch.
+      - name: Write a throwaway configuration
+        run: |
+          mkdir -p ci-userdata
+          # -r because planet/Test.ocp is an unpacked player, i.e. a directory.
+          # C4StartupMainDlg matches *.ocp by name and does not care which it is.
+          cp -r planet/Test.ocp ci-userdata/
+          cat > ci.config <<EOF
+          [General]
+          UserDataPath="$PWD/ci-userdata/"
+          FirstStart=false
+
+          [Graphics]
+          Windowed=1
+          WindowX=1024
+          WindowY=768
+          EOF
+          cat ci.config
+          # Note for anyone debugging this later: the engine rewrites the file
+          # it was given on exit, with its whole configuration rather than the
+          # keys it was handed. Harmless here, confusing if you look at the file
+          # afterwards and wonder where your three lines went.
+
+      # The engine exits 2 on an aborted round (C4XRV_Aborted) and this kills
+      # it rather than closing it, so the exit status says nothing useful. The
+      # log is the signal.
+      - name: Start the engine and reach the menu
+        run: |
+          set -o pipefail
+          xvfb-run -a --server-args="-screen 0 1024x768x24" \
+            env LIBGL_ALWAYS_SOFTWARE=1 \
+            ./build-client/openclonk --language=US --config="$PWD/ci.config" > gui.log 2>&1 &
+          pid=$!
+
+          # Under llvmpipe the startup takes seconds rather than milliseconds.
+          for _ in $(seq 60); do
+            grep -qE "^\[[0-9:]+\] GL [0-9]" gui.log && break
+            sleep 1
+          done
+          sleep 5
+          alive=0
+          kill -0 $pid 2>/dev/null && alive=1
+          kill $pid 2>/dev/null || true
+          sleep 2
+          kill -9 $pid 2>/dev/null || true
+          wait $pid 2>/dev/null || true
+
+          echo "::group::engine log"
+          cat gui.log
+          echo "::endgroup::"
+
+          status=0
+          grep -qE "^\[[0-9:]+\] GL [0-9]" gui.log \
+            || { echo "::error::no GL context was created"; status=1; }
+          # "Loading graphics..." is IDS_PRC_GFXRES from the string table, so it
+          # is only this text because the launch passes --language=US, the way
+          # every other job here does. The GL line above is a literal in
+          # C4DrawGL.cpp and needs no such care.
+          grep -q "Loading graphics" gui.log \
+            || { echo "::error::the engine did not get as far as loading graphics"; status=1; }
+          if [ "$alive" -eq 0 ]; then
+            echo "::error::the engine exited before it could be stopped"
+            status=1
+          fi
+          if grep -qE "Segmentation fault|FATAL ERROR" gui.log; then
+            echo "::error::the engine crashed on startup"
+            status=1
+          fi
+          exit $status
+
+      # Deliberately not gating. #37 is an intermittent segfault in the modal
+      # player-creation dialog, seen once in six launches by hand and never
+      # reproduced since. The path is reached only when the user directory holds
+      # no player file, so this starts the engine five times against an empty
+      # one and counts the crashes.
+      #
+      # A crash here is a *finding*, not a build failure -- it is evidence for a
+      # bug that has none, gathered on every push for about a minute.
+      - name: Hunt the first-run crash (#37, not gating)
+        continue-on-error: true
+        run: |
+          crashes=0
+          for i in $(seq 5); do
+            rm -rf firstrun-userdata
+            mkdir -p firstrun-userdata
+            cat > firstrun.config <<EOF
+          [General]
+          UserDataPath="$PWD/firstrun-userdata/"
+
+          [Graphics]
+          Windowed=1
+          WindowX=1024
+          WindowY=768
+          EOF
+            xvfb-run -a --server-args="-screen 0 1024x768x24" \
+              env LIBGL_ALWAYS_SOFTWARE=1 \
+              ./build-client/openclonk --language=US --config="$PWD/firstrun.config" > "firstrun-$i.log" 2>&1 &
+            pid=$!
+            for _ in $(seq 40); do
+              grep -qE "^\[[0-9:]+\] GL [0-9]" "firstrun-$i.log" && break
+              sleep 1
+            done
+            sleep 4
+            if ! kill -0 $pid 2>/dev/null; then
+              echo "::warning::run $i: the engine died before it was stopped -- possible #37"
+              tail -20 "firstrun-$i.log"
+              crashes=$((crashes + 1))
+            fi
+            kill -9 $pid 2>/dev/null || true
+            wait $pid 2>/dev/null || true
+          done
+          echo "$crashes of 5 first-run launches died on their own"
+
+
   macos-app:
     name: App bundle — macos-latest
     runs-on: macos-latest
