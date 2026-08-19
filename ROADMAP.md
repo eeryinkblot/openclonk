@@ -184,11 +184,24 @@ appetite.
 
 | | |
 | --- | --- |
-| #51 | `ObjectInteractionMenu.ocs` fails 14 of 328, all in the item-transfer path. Engine regression or stale test is undecided; `Stackable.ocs` covers neighbouring behaviour and passes completely, which points at the menu path |
+| #51 | `ObjectInteractionMenu.ocs` fails 14 of 328, all in the item-transfer path. **Settled since**: GCC, clang and MSVC report the identical 14, so it is one bug everywhere and can be diagnosed on whichever machine is convenient |
 | #42 | `C4Config` violates the ODR under `WITH_AUTOMATIC_UPDATE`. Real UB; which translation unit disagrees is not established |
 | #43 | Four memory-safety warnings from GCC 16, untriaged. The `C4ObjectAction` one is uninitialised reads in game logic, i.e. a desync source |
-| #37 | Intermittent segfault drawing the first-run player dialog, roughly one in six, not reproduced |
+| #37 | Intermittent segfault drawing the first-run player dialog, roughly one in six, not reproduced. CI now attempts it five times per push and reports without gating; 0 of 5 so far |
 | #38 | UPnP has never been exercised on any platform. Needs a router with IGD, not a build machine |
+
+### 9. Lists this work produced
+
+Not investigations — each is a set of known, located defects with a pinned
+guard already watching it, so none of them can grow while it waits.
+
+| | |
+| --- | --- |
+| #56 | Twelve undefined-behaviour sites the sanitizer job pins. Five are the script engine's integer semantics, two the landscape's polygon rasterisation. Suggested order is in the issue: `StdBuf.h` first, script engine and landscape last and separately, since both are desync-relevant |
+| #55 | Seven scenarios that do not link cleanly. `ColorfulLights.ocs` has the clearest cause — nine globals declared in both `Script.c` and the generated `Objects.c` |
+| #47 | `MakeTempFilename` hands out a name it does not claim. Two disabled tests state the contract a fix has to meet |
+| #57 | The engine writes its whole configuration back over any `--config` file, and persists failure states it never revisits — the `Sound=0` trap is the instance that has cost time |
+| #58 | The first-run player dialog logs nothing, so the test hunting #37 cannot show it tested the right path. One log line fixes it |
 
 ### Not a work item
 

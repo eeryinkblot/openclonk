@@ -280,6 +280,17 @@ make the job flaky for a defect it cannot fix, so the gate gets a player file
 copied in and the hunt runs beside it with `continue-on-error`. First run on a
 runner: **0 of 5 died**, `GL 4.5 (Core Profile) Mesa 25.2.8 on llvmpipe`.
 
+**Neither branch of that `if` logs anything**, which is the weak point and is
+worth knowing before trusting the hunt. From outside the process a first-run
+start and an ordinary one are identical, so a user directory that quietly
+stopped being empty would leave the step reporting "0 of 5 died" while starting
+the ordinary menu five times — green, unchanged, and testing nothing, exactly
+like the scenarios in #27. The step therefore asserts the one thing it *can*
+see, that the directory holds no `*.ocp` before each launch, and fails hard when
+it does. Making the path itself observable is one log line in the engine, #58,
+and would let the with-dialog case gate on the fixture while still only warning
+about the crash.
+
 Costs 13 seconds for the launch and 25 for the hunt, on a job whose build alone
 is 398.
 
