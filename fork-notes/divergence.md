@@ -1395,6 +1395,70 @@ the GUI client. A revert is still one commit if that turns out to disagree.
 
 ---
 
+## 31. `511e3eea4` — the editor was Qt5-only, and macOS has no Qt5
+
+**Files:** `CMakeLists.txt`, `cmake/DeployQt.cmake`, `src/editor/*` (4 files)
+
+### Motivation
+
+macOS has had no editor since Qt5 left Homebrew. Nothing in this tree pinned an
+old version — the build simply asked for Qt5 by name and got nothing, so
+`WITH_QT_EDITOR` turned itself off and `src/editor/` was compiled by nothing on
+that platform (#46). C++17 (`30`) removed the other half of the obstacle, since
+Qt6 requires it.
+
+### Technical effect
+
+`find_package(QT NAMES Qt6 Qt5 ...)` picks whichever is installed, and
+`QT_VERSION_MAJOR` carries the choice through the resource macro, the link and
+the deploy helper. **Both are supported**: Windows gets Qt5 from vcpkg and Linux
+ships both, so replacing 5 with 6 would have broken working builds to fix an
+absence somewhere else. [ADR-024](decisions.md#adr-024--support-qt5-and-qt6-together-rather-than-replacing-one).
+
+The Qt5 floor moves from 5.4 to 5.14, for `QWidget::screen()`. 5.4 is from 2014;
+both Qt5 installations this fork builds against are 5.15.
+
+### What the grep missed
+
+The roadmap's estimate came from searching for removed class names: one
+`QRegExp`, four `QLayout::setMargin()` calls, one `qt5_add_resources`, and
+explicitly no `QDesktopWidget`, `QLinkedList`, `QTextCodec` or `QStringRef`. It
+was right about what it looked for and wrong about the size: **92 compiler
+errors**, from five API changes a name search cannot see.
+
+| What | Why no grep found it |
+| --- | --- |
+| `QOpenGLWidget` moved out of `QtWidgets` into its own module | The class is still called that; only its module changed. The `<QtWidgets>` umbrella in `C4ConsoleQt.h` stopped carrying it, so the viewport's base class was incomplete and every method on it failed — 90 of the 92 errors |
+| `QApplication::desktop()` removed, 2 sites | The searched-for name was `QDesktopWidget`; the calls say `desktop()` |
+| `Qt::TextColorRole`, `Qt::BackgroundColorRole` removed | Aliases for `ForegroundRole`/`BackgroundRole` since 4.2 |
+| `QFontMetrics::width`, `QWheelEvent::delta/x/y`, `QByteArray::append(QString)` | Method removals, invisible to a class-name search |
+| `QWidget::enterEvent` takes `QEnterEvent*` from 6.0 | The one signature that *changed* rather than disappeared, and the only place needing a `QT_VERSION` check |
+
+There were also five `setMargin` calls, not four.
+
+### Risk
+
+Real for the Qt5 path, which is why both are built in CI now: `linux-client`
+runs a matrix over `qt: [5, 6]`, each leg installing only the version it tests
+and asserting on `Using Qt<N> for the editor` rather than trusting the search
+order.
+
+Verified by running, not only building. Both configurations start the editor
+headlessly through `QT_QPA_PLATFORM=offscreen` on `Movement.ocs`: 433
+definitions loaded, `C4AulScriptEngine linked - 91039 lines, 0 warnings, 0
+errors`, landscape created, `Game started.` The two logs are 30 lines each and
+agree.
+
+### Not fixed here
+
+**The macOS half.** Getting the editor to compile there is what this makes
+possible; the Cocoa window and event plumbing has still never been exercised,
+and that is exactly the part #8 could not test when it left the editor branch of
+the mouse handler alone. #46 stays open until someone builds and runs it on that
+machine.
+
+---
+
 ## Not addressed
 
 Known, deliberately left alone:

@@ -418,9 +418,21 @@ landscape-tool toolbars, a log dock mirroring the engine log, and a viewport
 running the scenario at `Frame: 888`, `36 FPS`. All three Qt5 libraries mapped
 into the process. Sound and music play in editor mode too.
 
-So what is left is macOS, where Qt5 is still gone from Homebrew (#46). CI
-compiles the editor on Linux, and since `808f9cddd` it launches the *engine*
-there — the editor itself is still started by nobody automatically.
+**Qt6 works here too, and is what `511e3eea4` added** (#50). Arch ships
+`qt6-base` 6.11.1 alongside `qt5-base` 5.15.19, so both configurations were
+built and both were *started*: `QT_QPA_PLATFORM=offscreen ./openclonk --editor
+planet/Tests.ocf/Movement.ocs` loads 433 definitions, links the script engine
+with 0 warnings, creates the landscape and reaches `Game started.` on either.
+The two logs are 30 lines each and agree. To pick the older one deliberately,
+`-DQT_DIR=/usr/lib/cmake/Qt5` — `CMAKE_DISABLE_FIND_PACKAGE_Qt6` does *not* work
+for this, since `find_package(QT NAMES ...)` then finds nothing at all rather
+than falling through.
+
+So what is left is macOS (#46). The Qt6 support is what makes an editor possible
+there at all, since Homebrew has 6 and not 5 — but nobody has built it on that
+machine yet, and the Cocoa window and event plumbing has never been exercised
+regardless of which Qt compiles. CI launches the *engine* on Linux since
+`808f9cddd`; the editor itself is still started by nobody automatically.
 
 Note the consequence recorded in the Windows section: enabling the editor drops
 `C4ConsoleWin32.cpp` — and its non-Qt equivalents — from the build, so the two

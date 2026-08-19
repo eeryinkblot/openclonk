@@ -18,6 +18,7 @@ this workflow:
 | Kind of check | Runs |
 | --- | --- |
 | **Platform** — build, unit tests, packing, the scenario suite | once per platform |
+| **Dependency version** — Qt5 vs Qt6 for the editor | once per supported version |
 | **Content** — the C4Script lint over `planet/` | once, anywhere |
 | **Configuration** — `C4GROUP_TOOL_ONLY` | where it can actually fail |
 | **Instrumentation** — ASan and UBSan | once, on the platform with the best support |
@@ -245,7 +246,7 @@ bit-identical results across compilers. One more is `Distance()` in
 `if (d2 < 0)` to catch the overflow it just risked; detecting signed overflow
 after the fact is exactly what a compiler may assume cannot happen, and delete.
 
-### `linux-client` — `ubuntu-latest`
+### `linux-client` — `ubuntu-latest`, Qt5 **and** Qt6
 
 The first job to build a **client** rather than a server. Everything else in
 this workflow builds `openclonk-server`, so `C4Window`, `C4DrawGL`, the startup

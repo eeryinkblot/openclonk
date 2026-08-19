@@ -33,6 +33,7 @@ attractive again.
 | [ADR-021](#adr-021--guard-the-resort-at-the-call-site-not-in-sortbylist) | Guard the resort at the call site | accepted |
 | [ADR-022](#adr-022--put-the-cmake-floor-at-310-not-at-the-version-each-policy-needs) | CMake floor at 3.10 | accepted |
 | [ADR-023](#adr-023--c17-now-and-not-c20) | C++17 now, not C++20 | accepted |
+| [ADR-024](#adr-024--support-qt5-and-qt6-together-rather-than-replacing-one) | Support Qt5 and Qt6 together | accepted |
 
 The table stopped being maintained after ADR-016 and was caught up on
 2026-08-17. If you add a record, add its row.
@@ -712,6 +713,35 @@ only `libmisc`, through `c4group` — closed a day later with the headless Windo
 job (#30, `5198b01c6`), which builds the whole engine under C++17 on MSVC, runs
 the unit tests and starts a scenario. The editor and the GUI client remain
 uncompiled under C++17 anywhere but Linux.
+
+## ADR-024 — Support Qt5 and Qt6 together rather than replacing one
+
+**Context.** The editor asked for Qt5 by name. macOS has no Qt5 from Homebrew
+any more, so `src/editor/` is compiled by nothing there (#46); Windows gets Qt5
+from vcpkg and Linux packages both.
+
+**Decision.** `find_package(QT NAMES Qt6 Qt5 ...)`, with `QT_VERSION_MAJOR`
+carrying the choice through the resource macro, the link and the deploy helper.
+Qt6 is preferred where both exist.
+
+**Alternatives.**
+
+- *Move to Qt6 and drop Qt5.* Simpler in the file, and it would break the two
+  platforms that have a working editor today to fix the one that does not.
+  vcpkg's Qt6 on Windows is a much larger dependency change than this port, and
+  nothing forces it.
+- *Keep Qt5 and wait for macOS to get it back.* Homebrew removed it; waiting is
+  not a plan.
+- *A `WITH_QT6` option.* An option that must be set correctly to get a working
+  build is a worse version of asking CMake which one is installed.
+
+**Consequences.** One `QT_VERSION` check survives, for
+`QWidget::enterEvent`, whose signature changed rather than disappearing.
+Everything else compiles unchanged against both. The Qt5 floor rises from 5.4 to
+5.14 for `QWidget::screen()`, which is the replacement for the removed
+`QApplication::desktop()` — 5.4 is from 2014 and both live installations are
+5.15. CI builds both legs, because a supported version that nothing builds is a
+version nobody knows about.
 
 ## ADR-021 — Guard the resort at the call site, not in `SortByList`
 

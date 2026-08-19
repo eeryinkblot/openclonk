@@ -20,7 +20,7 @@ matrix is "derived" any more.
 
 | | |
 | --- | --- |
-| CI jobs | 8, all green. The Linux client is now **launched**, not just built |
+| CI jobs | 9, all green. The Linux client is **launched**, and built against both Qt5 and Qt6 |
 | Unit tests | 101 over four binaries (`tests`, `aul_test`, `StdMeshMath`, `determinism`), plus 2 disabled that state a known defect (#47) |
 | Scenario assertions in CI | 912, on **all three** platforms, agreeing assertion for assertion |
 | Known failing | 14 assertions, all in `ObjectInteractionMenu.ocs`, pinned so they cannot silently grow (#51) |
@@ -31,10 +31,9 @@ bundle. The Linux client is built, launched under Xvfb and asserted on. The 69 r
 now, but only linted — nothing asserts what they *do*, since they carry no
 `doTest()`.
 
-**Steps 1 to 5 and 7 are done.** What is left is #50, the Qt6 editor port, and
-the investigations in step 8 — plus the two lists this work produced: #56 (the
-twelve undefined-behaviour sites the sanitizer job pins) and #55 (the seven
-scenarios that do not link cleanly).
+**Every planned step is done.** What remains is the investigations in step 8 and
+the lists this work produced in step 9 — none of which was on the original plan,
+because none of it was known when the plan was written.
 
 ## The order
 
@@ -133,25 +132,26 @@ Consequences: googletest has no upper bound any more (nothing needs one), and
 #50 becomes possible. Why not C++20 is ADR-023 — `throw()` is removed there,
 and there are four.
 
-### 6. #50 — port the editor to Qt6, closing #46
+### ~~6. #50 — port the editor to Qt6~~ — done
 
-Only after #49; Qt6 requires C++17. macOS has no editor because Qt5 is gone from
-Homebrew, not because anything here pins an old version, so meeting the platform
-where it is now is the fix.
+`511e3eea4`, supporting **both** versions rather than replacing one
+(ADR-024): Windows gets Qt5 from vcpkg and Linux ships both, so dropping 5 would
+have broken working editors to fix an absent one.
 
-Measured scope in `src/editor/`: one `QRegExp`, four `QLayout::setMargin()`
-calls, one `qt5_add_resources`. No `QDesktopWidget`, `QLinkedList`, `QTextCodec`
-or `QStringRef` anywhere. That is a grep and not a build, so expect a compiler to
-find more.
+**The scope estimate below was a third of the truth, and the reason is worth
+keeping.** It was a grep for removed class names — one `QRegExp`, four
+`setMargin()` calls, no `QDesktopWidget` — and the compiler produced **92
+errors**. What a name search cannot see: `QOpenGLWidget` moving to a module of
+its own (90 of the 92, since the viewport's base class went incomplete),
+`QApplication::desktop()` at two sites, three method removals, and one changed
+signature. There were also five `setMargin` calls, not four.
 
-Worth supporting Qt5 and Qt6 together (`find_package(QT NAMES Qt6 Qt5)`):
-Windows and Linux have working Qt5 editor builds today and there is no reason to
-break them.
+Both configurations build *and start* the editor headlessly through
+`QT_QPA_PLATFORM=offscreen`, and CI now builds both as a matrix.
 
-Note what this does *not* fix. Getting the editor to compile on macOS is the
-easy half; the Cocoa window and event plumbing has never been exercised, and
-that is exactly the half #8 could not test when it left the editor branch of the
-mouse handler alone.
+**#46 stays open**, and this is the part the old entry got right: compiling the
+editor on macOS is the easy half. The Cocoa window and event plumbing has never
+been exercised, which is exactly what #8 could not test.
 
 ---
 

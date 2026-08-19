@@ -395,6 +395,26 @@ behaviour is upstream's own (`0315ea6ef`), by the same author as the test, and
 says in its message that it may break scenarios relying on it. Quote that, and
 mention the reverted-file experiment.
 
+### PR 23 — Support Qt6 for the editor, keeping Qt5
+
+| | |
+| --- | --- |
+| Commits | `511e3eea4` |
+| Files | `CMakeLists.txt`, `cmake/DeployQt.cmake`, `src/editor/` (4 files), `.github/workflows/build.yml` (matrix hunk — fork-local, split it out) |
+| Effect | The editor builds against either Qt major version |
+
+**Depends on PR 22**: Qt6 requires C++17, so this cannot land before the
+standard does.
+
+The argument writes itself for a project whose editor is unavailable on a whole
+platform: Homebrew has no Qt5 any more. Lead with that, and with the fact that
+nothing is dropped — `find_package(QT NAMES Qt6 Qt5)` keeps every existing Qt5
+build working, which matters for their Windows users.
+
+Worth stating in the description that both configurations were *run*, not only
+compiled, and that the port is nine small changes rather than a rewrite. The
+`QOpenGLWidget` module move is the one a reviewer will not know offhand.
+
 ### PR 22 — Raise the language standard to C++17
 
 | | |
