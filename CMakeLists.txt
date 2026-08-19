@@ -328,17 +328,38 @@ if(NOT C4GROUP_TOOL_ONLY)
 	set(HAVE_SDL ${SDL2_FOUND})
 	include_directories(SYSTEM ${SDL2_INCLUDE_DIRS})
 
-	# Qt5 for editor
-	find_package(Qt5 5.4 CONFIG COMPONENTS Core Widgets)
-	if(TARGET Qt5::Core)
+	# Qt for the editor, either major version.
+	#
+	# Qt6 first, then Qt5: the two are equally supported here and neither is
+	# going away on demand. macOS has no Qt5 from Homebrew any more, which is
+	# the whole reason this looks for 6 (#46, #50); Windows and Linux have
+	# working Qt5 editor builds today and there is no reason to break them.
+	#
+	# QT_VERSION_MAJOR is what the rest of the file keys off, so the resource
+	# macro and the link both follow whichever was found.
+	find_package(QT NAMES Qt6 Qt5 CONFIG COMPONENTS Core Widgets)
+	if(QT_FOUND)
+		# QOpenGLWidget, which the editor viewport derives from, sits in
+		# QtWidgets on Qt5 and in a module of its own on Qt6.
+		set(OC_QT_COMPONENTS Core Widgets)
+		if(QT_VERSION_MAJOR EQUAL 6)
+			list(APPEND OC_QT_COMPONENTS OpenGLWidgets)
+		endif()
+		# 5.14 rather than the 5.4 this asked for since 2016: QWidget::screen()
+		# arrived there, and it is what replaces the QApplication::desktop()
+		# Qt6 removed. Both Qt5 installations this fork builds against are 5.15.
+		find_package(Qt${QT_VERSION_MAJOR} 5.14 CONFIG COMPONENTS ${OC_QT_COMPONENTS})
+	endif()
+	if(TARGET Qt${QT_VERSION_MAJOR}::Core)
 		SET(WITH_QT_EDITOR ON "Qt editor dialogues available")
+		message(STATUS "Using Qt${QT_VERSION_MAJOR} for the editor")
 		set(CMAKE_AUTOMOC ON)
 		set(CMAKE_AUTOUIC ON)
 		# As moc files are generated in the binary dir, tell CMake
 		# to always look for includes there:
 		set(CMAKE_INCLUDE_CURRENT_DIR ON)
 	else()
-		message("Qt5Widgets not found. Building openclonk without editor.")		
+		message("Neither Qt6 nor Qt5 Widgets was found. Building openclonk without editor.")
 		UNSET(WITH_QT_EDITOR)
 	endif()
 endif()
@@ -793,7 +814,13 @@ set(OC_GUI_SOURCES
 )
 
 if(WITH_QT_EDITOR)
-  qt5_add_resources(qt_editor_resources "src/editor/resource.qrc")
+  # Spelled out rather than through the versionless qt_add_resources, which
+  # only exists from Qt 5.15 and would drop support for the 5.4 this asks for.
+  if(QT_VERSION_MAJOR EQUAL 6)
+    qt6_add_resources(qt_editor_resources "src/editor/resource.qrc")
+  else()
+    qt5_add_resources(qt_editor_resources "src/editor/resource.qrc")
+  endif()
   set(QT_EDITOR_SOURCES
 	  src/editor/C4PropertyPath.cpp
 	  src/editor/C4PropertyPath.h
@@ -1255,7 +1282,10 @@ if(NOT HEADLESS_ONLY AND NOT C4GROUP_TOOL_ONLY)
 
 	if(WITH_QT_EDITOR)
 		set_target_properties(openclonk PROPERTIES COMPILE_DEFINITIONS WITH_QT_EDITOR)
-		target_link_libraries(openclonk Qt5::Widgets)
+		target_link_libraries(openclonk Qt${QT_VERSION_MAJOR}::Widgets)
+		if(QT_VERSION_MAJOR EQUAL 6)
+			target_link_libraries(openclonk Qt6::OpenGLWidgets)
+		endif()
 
 		# Deploy dependency libraries and platforms/ folder
 		if(DEPLOY_QT_LIBRARIES)

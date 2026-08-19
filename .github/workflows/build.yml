@@ -572,9 +572,21 @@ jobs:
   # known to run on llvmpipe, so the display is not the obstacle it was assumed
   # to be for a long time.
   linux-client:
-    name: Client, editor and mape — ubuntu-latest
+    name: Client, editor and mape — ubuntu-latest, Qt${{ matrix.qt }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    # Both major versions, because both are supported and each is the only one
+    # available somewhere: Windows gets Qt5 from vcpkg, and macOS has no Qt5
+    # from Homebrew at all, which is what the Qt6 support exists for (#46, #50).
+    # A version nothing builds is a version nobody knows about.
+    #
+    # Neither leg forces a choice. Each installs only the Qt it is testing, so
+    # find_package(QT NAMES Qt6 Qt5) picks it the way it would on a machine that
+    # has exactly one of them -- which is the situation being covered.
+    strategy:
+      fail-fast: false
+      matrix:
+        qt: [5, 6]
 
     steps:
       - uses: actions/checkout@v5
@@ -596,8 +608,17 @@ jobs:
             libcurl4-openssl-dev libminiupnpc-dev \
             libepoxy-dev libsdl2-dev libglu1-mesa-dev libx11-dev \
             libopenal-dev libalut-dev libogg-dev libvorbis-dev \
-            libgtk-3-dev libgtksourceview-3.0-dev \
-            qtbase5-dev qtbase5-dev-tools
+            libgtk-3-dev libgtksourceview-3.0-dev
+
+      # Only the version under test, so nothing has to force the choice and the
+      # configure output can be asserted on rather than trusted.
+      - name: Install Qt${{ matrix.qt }}
+        run: |
+          if [ "${{ matrix.qt }}" = "6" ]; then
+            sudo apt-get install -y --no-install-recommends qt6-base-dev
+          else
+            sudo apt-get install -y --no-install-recommends qtbase5-dev qtbase5-dev-tools
+          fi
 
       - name: Configure
         run: |
@@ -615,16 +636,19 @@ jobs:
       - name: Assert the optional pieces were actually enabled
         run: |
           status=0
-          if grep -q "Qt5Widgets not found" configure.log; then
-            echo "::error::Qt5 was not found, so src/editor/ is not in this build"
+          # Assert the *version*, not merely that some Qt was found. A leg that
+          # quietly tested the other one would be worse than no leg at all.
+          if ! grep -q "Using Qt${{ matrix.qt }} for the editor" configure.log; then
+            echo "::error::configure did not report Qt${{ matrix.qt }}: src/editor/ is absent or built against the wrong version"
+            grep -i "qt" configure.log || true
             status=1
           fi
           if grep -q "Not enabling audio output" configure.log; then
             echo "::error::FindAudio found no complete set, so the client is silent"
             status=1
           fi
-          if ! grep -qE "^Qt5Widgets_DIR:" build-client/CMakeCache.txt; then
-            echo "::error::Qt5Widgets_DIR is not in the cache"
+          if ! grep -qE "^Qt${{ matrix.qt }}Widgets_DIR:" build-client/CMakeCache.txt; then
+            echo "::error::Qt${{ matrix.qt }}Widgets_DIR is not in the cache"
             status=1
           fi
           exit $status
@@ -652,8 +676,8 @@ jobs:
           echo "$count editor objects"
           [ "$count" -ge 15 ] \
             || { echo "::error::only $count objects in $dir -- src/editor/ was not built"; exit 1; }
-          ldd build-client/openclonk | grep -E "libQt5(Core|Gui|Widgets)" \
-            || { echo "::error::openclonk does not link Qt5"; exit 1; }
+          ldd build-client/openclonk | grep -E "libQt${{ matrix.qt }}(Core|Gui|Widgets)" \
+            || { echo "::error::openclonk does not link Qt${{ matrix.qt }}"; exit 1; }
 
       - name: Assert the client links what a client needs
         run: |

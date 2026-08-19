@@ -194,7 +194,7 @@ C4PropertyDelegateStringEditor::C4PropertyDelegateStringEditor(QWidget *parent, 
 {
 	auto layout = new QHBoxLayout(this);
 	layout->setContentsMargins(0, 0, 0, 0);
-	layout->setMargin(0);
+	layout->setContentsMargins(0, 0, 0, 0);
 	layout->setSpacing(0);
 	edit = new QLineEdit(this);
 	layout->addWidget(edit);
@@ -303,7 +303,7 @@ void C4PropertyDelegateStringEditor::SetValue(const C4Value &val)
 		C4String *language_string = language.getStr();
 		SCopy(language_string ? language_string->GetCStr() : Config.General.LanguageEx, lang_code, 2);
 		QFontMetrics fm(localization_button->font());
-		localization_button->setFixedWidth(fm.width(lang_code) + 4);
+		localization_button->setFixedWidth(fm.horizontalAdvance(lang_code) + 4);
 		localization_button->setText(QString(lang_code));
 	}
 	else
@@ -411,7 +411,7 @@ C4PropertyDelegateLabelAndButtonWidget::C4PropertyDelegateLabelAndButtonWidget(Q
 {
 	layout = new QHBoxLayout(this);
 	layout->setContentsMargins(0, 0, 0, 0);
-	layout->setMargin(0);
+	layout->setContentsMargins(0, 0, 0, 0);
 	layout->setSpacing(0);
 	label = new QLabel(this);
 	QPalette palette = label->palette();
@@ -650,7 +650,7 @@ C4PropertyDelegateEffectEditor::C4PropertyDelegateEffectEditor(QWidget *parent) 
 {
 	layout = new QHBoxLayout(this);
 	layout->setContentsMargins(0, 0, 0, 0);
-	layout->setMargin(0);
+	layout->setContentsMargins(0, 0, 0, 0);
 	layout->setSpacing(0);
 	remove_button = new QPushButton(QString(LoadResStr("IDS_CNS_REMOVE")), this);
 	layout->addWidget(remove_button);
@@ -895,7 +895,10 @@ C4DeepQComboBox::C4DeepQComboBox(QWidget *parent, C4StyledItemDelegateWithButton
 				// Get space to contain expanded leaf+1 item
 				QModelIndex last_index = this->model()->index(child_row_count - 1, 0, index);
 				int needed_height = view->visualRect(last_index).bottom() - view->visualRect(index).top() + view->height() - view->parentWidget()->height() + view->visualRect(last_index).height();
-				int available_height = QApplication::desktop()->availableGeometry(view->mapToGlobal(QPoint(1, 1))).height(); // but do not expand past screen size
+				// QApplication::desktop() was removed in Qt6. QWidget::screen() is
+				// the screen this view is on, which is what the old call looked
+				// up by mapping a point into global coordinates.
+				int available_height = view->screen()->availableGeometry().height(); // but do not expand past screen size
 				int new_height = std::min(needed_height, available_height - 20);
 				if (view->parentWidget()->height() < new_height) view->parentWidget()->resize(view->parentWidget()->width(), (this->last_popup_height=new_height));
 			}
@@ -1504,7 +1507,7 @@ QWidget *C4PropertyDelegateEnum::CreateEditor(const C4PropertyDelegateFactory *p
 	Editor *editor = new Editor(parent);
 	editor->layout = new QHBoxLayout(editor);
 	editor->layout->setContentsMargins(0, 0, 0, 0);
-	editor->layout->setMargin(0);
+	editor->layout->setContentsMargins(0, 0, 0, 0);
 	editor->layout->setSpacing(0);
 	editor->updating = true;
 	editor->option_box = new C4DeepQComboBox(editor, GetOptionComboBoxButtonType(), allow_editing);
@@ -1981,7 +1984,7 @@ C4PropertyDelegateC4ValueInputEditor::C4PropertyDelegateC4ValueInputEditor(QWidg
 {
 	layout = new QHBoxLayout(this);
 	layout->setContentsMargins(0, 0, 0, 0);
-	layout->setMargin(0);
+	layout->setContentsMargins(0, 0, 0, 0);
 	layout->setSpacing(0);
 	edit = new QLineEdit(this);
 	layout->addWidget(edit);
@@ -3275,14 +3278,16 @@ QVariant C4ConsoleQtPropListModel::data(const QModelIndex & index, int role) con
 		}
 		}
 	}
-	else if (role == Qt::BackgroundColorRole && index.column()==1)
+	else if (role == Qt::BackgroundRole && index.column()==1)
 	{
 		C4Value v;
 		prop->delegate->GetPropertyValue(prop->parent_value, prop->key, index.row(), &v);
 		QColor bgclr = prop->delegate->GetDisplayBackgroundColor(v, target_value.getObj());
 		if (bgclr.isValid()) return bgclr;
 	}
-	else if (role == Qt::TextColorRole && index.column() == 1)
+	// Qt::TextColorRole was an alias for ForegroundRole, deprecated in Qt 5.13
+	// and removed in Qt6. ForegroundRole has existed since Qt 4.2.
+	else if (role == Qt::ForegroundRole && index.column() == 1)
 	{
 		C4Value v;
 		prop->delegate->GetPropertyValue(prop->parent_value, prop->key, index.row(), &v);
@@ -3406,7 +3411,7 @@ QMimeData *C4ConsoleQtPropListModel::mimeData(const QModelIndexList &indexes) co
 		if (index.isValid() && index.internalId())
 		{
 			if (count) encodedData.append(",");
-			encodedData.append(QString::number(index.row()));
+			encodedData.append(QString::number(index.row()).toUtf8());
 			++count;
 		}
 	}

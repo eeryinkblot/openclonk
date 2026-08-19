@@ -20,11 +20,17 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-find_package(Qt5Core REQUIRED)
+# QT_VERSION_MAJOR is set by the find_package(QT NAMES Qt6 Qt5 ...) in the
+# top-level CMakeLists.txt, which runs before this is included. Defaulting to 5
+# keeps this file usable on its own.
+if(NOT QT_VERSION_MAJOR)
+    set(QT_VERSION_MAJOR 5)
+endif()
+find_package(Qt${QT_VERSION_MAJOR}Core REQUIRED)
 
 # Retrieve the absolute path to qmake and then use that path to find
 # the windeployqt and macdeployqt binaries
-get_target_property(_qmake_executable Qt5::qmake IMPORTED_LOCATION)
+get_target_property(_qmake_executable Qt${QT_VERSION_MAJOR}::qmake IMPORTED_LOCATION)
 get_filename_component(_qt_bin_dir "${_qmake_executable}" DIRECTORY)
 
 find_program(WINDEPLOYQT_EXECUTABLE windeployqt HINTS "${_qt_bin_dir}")

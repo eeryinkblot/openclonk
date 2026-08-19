@@ -24,6 +24,11 @@
 #include "editor/C4ConsoleGUI.h" // for OpenGL
 #include "editor/C4ConsoleQt.h"
 
+// Not covered by the <QtWidgets> umbrella any more: Qt6 moved QOpenGLWidget out
+// of QtWidgets into QtOpenGLWidgets. Including it where the base class is used
+// works on both, and does not depend on an umbrella header's contents.
+#include <QOpenGLWidget>
+
 class C4ConsoleQtViewportView : public QOpenGLWidget
 {
 	Q_OBJECT
@@ -48,7 +53,14 @@ protected:
 	void wheelEvent(QWheelEvent *event) override;
 	void keyPressEvent(QKeyEvent * event) override;
 	void keyReleaseEvent(QKeyEvent * event) override;
+	// The only signature Qt6 changed rather than removed: QWidget::enterEvent
+	// takes a QEnterEvent* from 6.0 on, so this cannot be spelled once for both.
+	// The parameter is unused either way.
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+	void enterEvent(QEnterEvent *) override;
+#else
 	void enterEvent(QEvent *) override;
+#endif
 	void leaveEvent(QEvent *) override;
 
 public:

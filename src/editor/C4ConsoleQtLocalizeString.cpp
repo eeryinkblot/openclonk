@@ -146,7 +146,10 @@ void C4ConsoleQtLocalizeStringDlg::done(int r)
 void C4ConsoleQtLocalizeStringDlg::AddLanguagePressed()
 {
 	bool lang_ok = false;
-	QRegExpValidator validator(QRegExp("^[a-zA-Z][a-zA-Z]$"), this);
+	// QRegExp and QRegExpValidator were removed in Qt6. QRegularExpression has
+	// been the recommended replacement since Qt 5.0, so this compiles against
+	// both.
+	QRegularExpressionValidator validator(QRegularExpression("^[a-zA-Z][a-zA-Z]$"), this);
 	QString lang_id;
 	while (!lang_ok)
 	{
