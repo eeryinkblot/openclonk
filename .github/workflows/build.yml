@@ -3,12 +3,19 @@ name: Build and test
 on:
   push:
     branches: [master]
+    tags: ["v*"]
   pull_request:
   workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
+
+# Read-only for everything except the release job, which raises it to
+# contents: write for itself. The default would otherwise be whatever the
+# repository settings say, which is not visible from this file.
+permissions:
+  contents: read
 
 env:
   GTEST_VERSION: "1.14.0"
@@ -48,7 +55,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        # `platform` is the artifact name, not a second way to say `os`:
+        # ubuntu-latest is x86_64 and macos-latest has been arm64 since the
+        # macOS 14 image, and a downloader needs to know which.
+        include:
+          - os: ubuntu-latest
+            platform: linux-x86_64
+          - os: macos-latest
+            platform: macos-arm64
 
     steps:
       - uses: actions/checkout@v5
@@ -333,6 +347,81 @@ jobs:
           done < /tmp/pins.txt
 
           exit $status
+
+      # Everything below this line exists so a run leaves something
+      # downloadable behind, and so the release job has something to attach.
+      # #23.
+      #
+      # Tarred before uploading rather than handed to upload-artifact as loose
+      # files: the artifact format stores no Unix mode bits, so a plain upload
+      # returns an openclonk-server without its executable bit. A tarball
+      # inside the artifact zip survives the round trip intact.
+      - name: Package the tools
+        run: |
+          dir="openclonk-tools-${{ matrix.platform }}"
+          mkdir -p "dist/$dir"
+          cp build/openclonk-server build/c4group build/c4script "dist/$dir/"
+          cp COPYING TRADEMARK "dist/$dir/"
+          tar czf "dist/$dir.tar.gz" -C dist "$dir"
+          ls -l "dist/$dir.tar.gz"
+
+      - name: Upload the tools
+        uses: actions/upload-artifact@v4
+        with:
+          name: openclonk-tools-${{ matrix.platform }}
+          path: dist/openclonk-tools-${{ matrix.platform }}.tar.gz
+          retention-days: 14
+          if-no-files-found: error
+
+      # Packed once rather than per platform: the groups are what c4group wrote
+      # out of planet/, the same bytes on every runner, and they are 79 MB.
+      #
+      # Music.ocg is not in OC_C4GROUPS off Apple, so it is packed here by hand.
+      # Without it a client has sound effects and silence where the music
+      # belongs -- on Windows with nothing in the log to say why, on Linux with
+      # a "Music File not found" naming a path under SystemDataPath that no
+      # amount of staging next to the binary will change. #28.
+      #
+      # c4group exits 0 when packing fails, so this checks the output rather
+      # than the status -- the same defect the "Reject empty group files" step
+      # above exists for. A Music.ocg that failed to pack is still a directory,
+      # which is what the -f test catches.
+      - name: Package the game data
+        if: matrix.platform == 'linux-x86_64'
+        run: |
+          dir="openclonk-game-data"
+          mkdir -p "dist/$dir"
+          cp build/*.oc* "dist/$dir/"
+          cp -r planet/Music.ocg "dist/$dir/Music.ocg"
+          ./build/c4group "dist/$dir/Music.ocg" -p
+          cp planet/COPYING "dist/$dir/COPYING"
+          cp planet/AUTHORS "dist/$dir/AUTHORS"
+          status=0
+          for f in "dist/$dir"/*.oc*; do
+            if [ -f "$f" ] && [ -s "$f" ]; then
+              printf '  %10d  %s\n' "$(wc -c < "$f")" "$(basename "$f")"
+            else
+              echo "::error::$(basename "$f") is empty or still a directory — packing failed silently"
+              status=1
+            fi
+          done
+          count=$(ls -1 "dist/$dir"/*.oc* | wc -l)
+          if [ "$count" -ne 13 ]; then
+            echo "::error::13 groups expected — 12 from OC_C4GROUPS plus Music.ocg — but $count are present"
+            status=1
+          fi
+          tar czf "dist/$dir.tar.gz" -C dist "$dir"
+          ls -l "dist/$dir.tar.gz"
+          exit $status
+
+      - name: Upload the game data
+        if: matrix.platform == 'linux-x86_64'
+        uses: actions/upload-artifact@v4
+        with:
+          name: openclonk-game-data
+          path: dist/openclonk-game-data.tar.gz
+          retention-days: 14
+          if-no-files-found: error
 
   # The check for the class of defect no test can catch. #41 was a stack buffer
   # read after its scope ended, in the path every `groups` build takes, and it
@@ -842,6 +931,33 @@ jobs:
           done
           echo "$crashes of 5 first-run launches died on their own"
 
+      # The client this job just started, with the editor compiled into it, and
+      # mape. Not an install: the game data is a separate artifact, and music
+      # stays silent in a build tree whatever you put next to the binary,
+      # because C4MusicSystem looks under SystemDataPath (#28). The release
+      # notes say so; a downloader who only has the tarball would not know.
+      #
+      # mape is located rather than assumed: oc_set_target_names() redirects the
+      # four shipped executables to the build root and mape is not one of them.
+      - name: Package the client
+        run: |
+          dir="openclonk-client-linux-x86_64-qt${{ matrix.qt }}"
+          mkdir -p "dist/$dir"
+          mape=$(find build-client -maxdepth 2 -type f -name mape -perm -u+x | head -1)
+          [ -n "$mape" ] || { echo "::error::mape was built but cannot be found"; exit 1; }
+          cp build-client/openclonk "$mape" "dist/$dir/"
+          cp COPYING TRADEMARK "dist/$dir/"
+          tar czf "dist/$dir.tar.gz" -C dist "$dir"
+          ls -l "dist/$dir.tar.gz"
+
+      - name: Upload the client
+        uses: actions/upload-artifact@v4
+        with:
+          name: openclonk-client-linux-x86_64-qt${{ matrix.qt }}
+          path: dist/openclonk-client-linux-x86_64-qt${{ matrix.qt }}.tar.gz
+          retention-days: 14
+          if-no-files-found: error
+
 
   macos-app:
     name: App bundle — macos-latest
@@ -920,6 +1036,36 @@ jobs:
           done < <(otool -L "$exe" | tail -n +2 | awk '{print $1}' \
                      | grep -v '^/System\|^/usr/lib')
           exit $missing
+
+      # ditto, not zip. The bundle is ad-hoc signed and install_name_tool has
+      # already rewritten every library in it; an archiver that drops symlinks
+      # or extended attributes invalidates the signature the two steps above
+      # just verified, and on arm64 an invalid signature is fatal rather than
+      # cosmetic. Unpacked and re-verified here, because a bundle that only
+      # fails to verify on the downloader's machine is worse than none.
+      #
+      # Still not distributable, for reasons that have nothing to do with the
+      # archive: the rpaths tools/osx_bundle_libs writes are absolute paths on
+      # the machine that built it, and ad-hoc is not a Developer ID. #24.
+      - name: Package the app bundle
+        run: |
+          mkdir -p dist
+          ditto -c -k --keepParent --sequesterRsrc build-gui/openclonk.app \
+            dist/openclonk-app-macos-arm64.zip
+          rm -rf verify && mkdir -p verify
+          ditto -x -k dist/openclonk-app-macos-arm64.zip verify
+          codesign -v verify/openclonk.app \
+            || { echo "::error::the bundle does not verify after the archive round trip"; exit 1; }
+          echo "bundle still verifies unpacked"
+          ls -l dist/openclonk-app-macos-arm64.zip
+
+      - name: Upload the app bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: openclonk-app-macos-arm64
+          path: dist/openclonk-app-macos-arm64.zip
+          retention-days: 14
+          if-no-files-found: error
 
   # Windows has had no CI since AppVeyor. The old setup pulled prebuilt
   # dependencies from a personal server that is now unreachable, so this starts
@@ -1217,3 +1363,125 @@ jobs:
           }
 
           exit $status
+
+      # The Windows half of #23. Zipped with Compress-Archive rather than tarred
+      # like the Unix jobs: there is no mode bit to preserve here, and a zip is
+      # what a Windows downloader can open without installing anything.
+      #
+      # The DLLs are not optional. vcpkg's applocal deployment puts them next to
+      # the executables at link time, and without them the tools fail to start
+      # with a dialog box rather than a message on stdout -- which is exactly
+      # how #31 hid. The scenario suite above ran openclonk-server.exe out of
+      # this directory, so whatever it needed is here.
+      - name: Package the tools
+        run: |
+          $dir = "dist\openclonk-tools-windows-x64"
+          New-Item -ItemType Directory -Force $dir | Out-Null
+          foreach ($exe in "openclonk-server.exe", "c4group.exe", "c4script.exe") {
+            if (-not (Test-Path "build\$exe")) { throw "no $exe was produced" }
+            Copy-Item "build\$exe" $dir
+          }
+          $dlls = Get-ChildItem build -Recurse -Depth 1 -Filter *.dll |
+            Group-Object Name | ForEach-Object { $_.Group[0] }
+          if (-not $dlls) { throw "no dependency DLLs next to the executables" }
+          $dlls | ForEach-Object { Copy-Item $_.FullName $dir }
+          Write-Host "$($dlls.Count) DLLs bundled"
+          Copy-Item COPYING, TRADEMARK $dir
+          Compress-Archive -Path "$dir\*" `
+            -DestinationPath "dist\openclonk-tools-windows-x64.zip" -Force
+          Get-Item "dist\openclonk-tools-windows-x64.zip" | Select-Object Name, Length
+
+      - name: Upload the tools
+        uses: actions/upload-artifact@v4
+        with:
+          name: openclonk-tools-windows-x64
+          path: dist/openclonk-tools-windows-x64.zip
+          retention-days: 14
+          if-no-files-found: error
+
+  # Cutting a release is an ordinary green run plus one job that collects what
+  # the others already built. It runs only for a `v*` tag, and it needs every
+  # other job: a release that skipped the sanitizers or the content lint would
+  # be a release nobody checked. #23.
+  #
+  # Nothing is built here. If the assets are wrong, they were wrong in CI, which
+  # is where that gets noticed rather than after publishing.
+  release:
+    name: Release — ${{ github.ref_name }}
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs:
+      - headless
+      - sanitizers
+      - scenario-lint
+      - linux-client
+      - macos-app
+      - windows-c4group
+      - windows-headless
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      # The jobs that build the archives run on every push and have no tag to
+      # name themselves after, so the version goes in here:
+      # openclonk-tools-linux-x86_64.tar.gz becomes
+      # openclonk-9.0-alpha-fork.1-tools-linux-x86_64.tar.gz.
+      #
+      # The count is asserted because a job that produced no artifact does not
+      # fail this one -- download-artifact is happy with whatever it finds, and
+      # a release missing a platform looks exactly like a release that never
+      # had one.
+      - name: Collect the assets
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          mkdir -p dist
+          found=0
+          while read -r f; do
+            base=$(basename "$f")
+            mv "$f" "dist/${base/openclonk-/openclonk-$version-}"
+            found=$((found + 1))
+          done < <(find artifacts -type f \( -name "*.tar.gz" -o -name "*.zip" \))
+          ls -l dist
+          if [ "$found" -ne 7 ]; then
+            echo "::error::$found assets collected, 7 expected — two tool sets on Unix, one on Windows, two clients, the app bundle and the game data"
+            exit 1
+          fi
+
+      # Written notes when the tag has a file, generated ones otherwise, and a
+      # warning either way if it is the fallback: the commit messages in this
+      # fork carry their reasoning, so --generate-notes produces something
+      # readable, but it cannot say what a release is for.
+      #
+      # Re-runnable. `gh release create` fails on an existing release, which
+      # would turn a re-run of a flaky job into a red run over a release that
+      # is already published.
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          notes="fork-notes/releases/${GITHUB_REF_NAME}.md"
+          args=(--verify-tag --title "$GITHUB_REF_NAME")
+          case "$GITHUB_REF_NAME" in
+            *alpha*|*beta*|*rc*) args+=(--prerelease) ;;
+          esac
+          if [ -f "$notes" ]; then
+            args+=(--notes-file "$notes")
+          else
+            echo "::warning::no $notes — publishing generated notes instead"
+            args+=(--generate-notes)
+          fi
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            echo "the release exists — replacing its assets"
+            gh release upload "$GITHUB_REF_NAME" dist/* --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" "${args[@]}" dist/*
+          fi
+          gh release view "$GITHUB_REF_NAME" --json name,isPrerelease,assets \
+            --jq '.name, .isPrerelease, (.assets[] | "  \(.size)  \(.name)")'
