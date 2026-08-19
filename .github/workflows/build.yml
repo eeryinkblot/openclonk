@@ -779,6 +779,17 @@ jobs:
           for i in $(seq 5); do
             rm -rf firstrun-userdata
             mkdir -p firstrun-userdata
+
+            # The fixture is the whole test. This path is reached only when the
+            # user directory holds no *.ocp, and nothing in the engine logs that
+            # the dialog opened -- so a directory that quietly stopped being
+            # empty would leave this step reporting "0 crashes" while actually
+            # exercising the ordinary startup. Check the condition it rests on.
+            # Making the path observable at all is #58.
+            if [ -n "$(find firstrun-userdata -maxdepth 1 -name '*.ocp' -print -quit)" ]; then
+              echo "::error::firstrun-userdata is not empty, so this is not the first-run path"
+              exit 1
+            fi
             cat > firstrun.config <<EOF
           [General]
           UserDataPath="$PWD/firstrun-userdata/"

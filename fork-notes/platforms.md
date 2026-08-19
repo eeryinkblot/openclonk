@@ -419,11 +419,49 @@ running the scenario at `Frame: 888`, `36 FPS`. All three Qt5 libraries mapped
 into the process. Sound and music play in editor mode too.
 
 So what is left is macOS, where Qt5 is still gone from Homebrew (#46). CI
-compiles the editor on Linux now, but does not launch it (#45).
+compiles the editor on Linux, and since `808f9cddd` it launches the *engine*
+there — the editor itself is still started by nobody automatically.
 
 Note the consequence recorded in the Windows section: enabling the editor drops
 `C4ConsoleWin32.cpp` — and its non-Qt equivalents — from the build, so the two
 configurations cover different code and neither is a superset.
+
+### Running the client without a display — verified here
+
+Two ways, and the second is the one worth remembering because it needs nothing
+installed:
+
+```sh
+# what CI does: a virtual X server
+xvfb-run -a --server-args="-screen 0 1024x768x24" ./build-gui/openclonk
+
+# what works on a machine with no xvfb and no free screen: SDL's offscreen
+# video driver
+SDL_VIDEODRIVER=offscreen ./build-gui/openclonk --language=US --config=/tmp/throwaway.config
+```
+
+The offscreen driver gives a real GL context — `GL 4.6 (Core Profile) … on
+llvmpipe` — loads graphics, and reaches the menu, without drawing on anybody's
+desktop. It logs one harmless complaint,
+`FlashWindow SDL: Video driver 'offscreen' has no mapping to SDL_SysWMinfo`.
+
+This is how the `#45` CI steps were tested before they were pushed, on a machine
+that has no Xvfb: everything except `xvfb-run` itself is exercised, and it found
+three mistakes that would each have cost a red run. Worth reaching for whenever
+a change touches startup, windowing or the GUI.
+
+Three things about a launch that are easy to get wrong, all of them paid for
+here:
+
+- **`--language=US` decides what the log says.** `Loading graphics...` is
+  `IDS_PRC_GFXRES` from the string table, so any assertion on that text depends
+  on the language, while `GL …` is a literal in `C4DrawGL.cpp` and does not.
+- **The engine rewrites the config file it is given** on exit, with its whole
+  configuration rather than the keys it was handed. Look at the file afterwards
+  and your three lines are gone, replaced by a hundred. #57.
+- **`UserDataPath` in that config does work**, and moves the log and player data
+  with it — which is what makes a throwaway run possible at all. The
+  `[General] UserDataPath="…/"` key is honoured by `DeterminePaths()`.
 
 ### Unit tests — verified here
 
