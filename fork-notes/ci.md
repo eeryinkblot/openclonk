@@ -5,10 +5,15 @@
 pinned Visual Studio 2017 — so nothing had verified a build since roughly 2020.
 Both are removed in this fork; this workflow replaces them.
 
-Triggers: push to `master`, any pull request, and manual dispatch. Runs on the
-same ref cancel each other (`concurrency` with `cancel-in-progress`), and every
-job has a 45-minute cap so a stuck build fails instead of running to the
-six-hour default.
+Triggers: push to `master`, push of a `v*` tag, any pull request, and manual
+dispatch. Runs on the same ref cancel each other (`concurrency` with
+`cancel-in-progress`), and every job has a 45-minute cap so a stuck build fails
+instead of running to the six-hour default. The tag trigger is what cuts a
+release — see [what a run leaves behind](#what-a-run-leaves-behind).
+
+Permissions are `contents: read` for the whole file; the `release` job raises
+its own to `contents: write`. The default would otherwise be whatever the
+repository settings happen to say, which is not visible from here.
 
 ## How the jobs are split
 
@@ -413,6 +418,69 @@ about 70 s of that, less than the single scenario used to cost. The client job c
 no more than the headless one despite building the editor and mape on top —
 the runner has more cores than the build has serial work.
 
+## What a run leaves behind
+
+Every run uploads its build outputs, and a `v*` tag turns them into a GitHub
+release. #23.
+
+| Artifact | From | Holds |
+| --- | --- | --- |
+| `openclonk-game-data` | `headless`, Linux leg only | the 13 packed groups |
+| `openclonk-tools-linux-x86_64` | `headless` | `openclonk-server`, `c4group`, `c4script` |
+| `openclonk-tools-macos-arm64` | `headless` | the same three |
+| `openclonk-tools-windows-x64` | `windows-headless` | the same three, plus the vcpkg DLLs |
+| `openclonk-client-linux-x86_64-qt5` | `linux-client` | `openclonk` with the editor, and `mape` |
+| `openclonk-client-linux-x86_64-qt6` | `linux-client` | the same, built against Qt6 |
+| `openclonk-app-macos-arm64` | `macos-app` | `openclonk.app` |
+
+Four things about this are decisions rather than detail:
+
+- **Everything is archived before it is uploaded.** `actions/upload-artifact`
+  stores no Unix mode bits, so uploading loose files hands the downloader an
+  `openclonk-server` without its executable bit. A tarball inside the artifact
+  zip survives the round trip.
+- **The macOS bundle goes through `ditto`, not `zip`,** and is unpacked and
+  re-verified in the same step. The bundle is ad-hoc signed and every library in
+  it has been rewritten by `install_name_tool`; an archiver that drops symlinks
+  or extended attributes invalidates the signature, and on arm64 an invalid
+  signature is fatal rather than cosmetic. A bundle that only fails to verify on
+  the downloader's machine would be worse than shipping none.
+- **The game data is packed once, on the Linux leg.** Every platform's
+  `c4group` writes the same bytes and the result is 79 MB. `Music.ocg` is packed
+  by hand there, because `OC_C4GROUPS` only includes it on Apple — without it a
+  client has sound effects and silence where the music belongs (#28). Shipping
+  it does not by itself make it audible on Linux, where `C4MusicSystem` looks
+  under `SystemDataPath`; that at least is loud about it, and logs
+  `Music File not found: <prefix>/share/games/openclonk/Music.ocg`. On Windows
+  the same absence is silent. `c4group` still exits 0 when packing fails, so that step counts the
+  groups and checks each one is a non-empty *file*: a `Music.ocg` that failed to
+  pack is still a directory.
+- **Nothing is built in the release job.** It downloads what the others
+  produced, renames it to carry the tag's version, and publishes. If an asset is
+  wrong it was wrong in CI, which is where it gets noticed rather than after
+  publishing.
+
+### `release` — `ubuntu-latest`, tags only
+
+Guarded twice: `if: startsWith(github.ref, 'refs/tags/v')`, and `needs:` every
+other job. A release that skipped the sanitizers or the content lint would be a
+release nobody checked.
+
+It asserts the asset count. `download-artifact` is happy with whatever it finds,
+so a job that produced no artifact would not fail this one, and a release
+missing a platform looks exactly like a release that never had one.
+
+Notes come from `fork-notes/releases/<tag>.md` when that file exists and from
+`--generate-notes` otherwise, with a warning when it is the fallback: generated
+notes are readable here, because the commit messages carry their reasoning, but
+they cannot say what a release is *for*. Tags containing `alpha`, `beta` or `rc`
+are marked pre-release.
+
+The step is re-runnable. `gh release create` fails on an existing release, which
+would turn the re-run of a flaky job into a red run over a release that is
+already published; if the release exists, the assets are re-uploaded with
+`--clobber` instead.
+
 ## Why the checks are shaped like this
 
 Every assertion exists because the corresponding failure was **silent**. The
@@ -486,12 +554,13 @@ machine ever ticks. See [ADR-009](decisions.md#adr-009--hold-stdin-open-in-ci-in
   and it is worth knowing before a new assertion is written. See
   [platforms.md](platforms.md#scenario-run--verified-here).
 
-- **The rest of Windows.** Only `c4group` is built there. `HEADLESS_ONLY`, the
-  full GUI build, the unit tests and a launched engine have since all been
-  verified by hand on a Windows machine — see
-  [platforms.md](platforms.md#windows-x64) — and needed no source change, so
-  extending this job is now a matter of adding vcpkg packages and build time
-  rather than an open question. Until that happens it is one machine, once.
+- **The Windows client.** `windows-headless` covers the engine, the four test
+  binaries, packing and the scenario suite since `5198b01c6`, so this is no
+  longer "only `c4group` is built there". What is missing is the GUI build and
+  the Qt5 editor, both of which have been built and run by hand on a Windows
+  machine — see [platforms.md](platforms.md#windows-x64) — and needed no source
+  change. Until a job does it, that is one machine, once. It is also why the
+  release carries no Windows client (#23, #24).
 - **The Qt editor on macOS.** Covered on Linux by `linux-client` now. macOS has
   no Qt5 from Homebrew, so `src/editor/` is still compiled by nothing there, and
   anything platform-specific in it is unguarded — including the editor branch of

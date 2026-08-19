@@ -18,7 +18,7 @@ than up front:
 | --- | --- |
 | `divergence.md` | What every deviation from upstream does, and why upstream's version was wrong |
 | `decisions.md` | Why each change has the shape it does, and which alternatives were rejected |
-| `ci.md` | What the GitHub Actions workflow checks, and the environment constraints behind it |
+| `ci.md` | What the GitHub Actions workflow checks, what a run leaves behind, and how a tag becomes a release |
 | `platforms.md` | What is known to work on which machine, and what is only assumed |
 | `lessons.md` | How this work has gone wrong before, as method rather than as incident |
 | `pr-plan.md` | How the commits group into eventual pull requests |
@@ -167,9 +167,22 @@ binary does nothing.** `C4MusicSystem` looks it up under `SystemDataPath`, which
 the way it is on macOS and Windows. An uninstalled build tree therefore has no music,
 and says so: `Music File not found: /usr/local/share/games/openclonk/Music.ocg`.
 
-To hear music while still playing out of the build tree, configure with
-`WITH_AUTOMATIC_UPDATE=ON` — that alone makes `SystemDataPath` the executable's
-directory, the way it already is on Windows:
+**The cheapest fix is the user data path**, not a rebuild: `C4MusicSystem::Init`
+loads `AtSystemDataPath("Music.ocg")` *and* `AtUserDataPath("Music.ocg")`, and
+`C4Group::Open` takes a packed file or a directory either way — so a symlink to
+the unpacked source is enough, and nothing has to be packed or installed:
+
+```sh
+ln -s "$PWD/planet/Music.ocg" ~/.clonk/openclonk/Music.ocg
+```
+
+The engine then logs `Music: UrbanBolero.ogg` instead of `Music File not found`.
+Verified both ways, with the symlinked directory and with a packed `Music.ocg`
+copied in.
+
+To hear music out of the build tree without touching the user directory,
+configure with `WITH_AUTOMATIC_UPDATE=ON` instead — that alone makes
+`SystemDataPath` the executable's directory, the way it already is on Windows:
 
 ```sh
 cmake -B build-play -DCMAKE_BUILD_TYPE=RelWithDebInfo -DHEADLESS_ONLY=OFF \

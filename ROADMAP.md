@@ -30,6 +30,7 @@ are green, and no cell in the platform matrix is "derived" any more.
 | Scenarios script-linted | 99 of 99; 92 clean, 7 pinned |
 | Undefined behaviour | 12 sites pinned, ASan clean everywhere |
 | The client | built against Qt5 **and** Qt6, and launched under Xvfb |
+| Downloads | every run uploads its build outputs; a `v*` tag publishes them as a release (#23) |
 
 What CI still does **not** do: build a client on Windows, launch the macOS
 bundle, or start the editor anywhere. The 69 real game scenarios are loaded and
@@ -107,6 +108,25 @@ One at a time, when someone has the appetite. None blocks anything.
 Two warnings each, cause unknown, pinned so they cannot grow. The rule the issue
 records: **split one out once it has a cause, leave it on the list while it is
 only a count.** #59 is what that looks like.
+
+### 8. #24 — what a release still cannot carry
+
+Half of it is done: a tag now publishes the tools for all three platforms, the
+Linux client, the game data and the macOS bundle, and
+[`ci.md`](fork-notes/ci.md#what-a-run-leaves-behind) says what each is. Two gaps
+remain, and both are real work rather than packaging:
+
+- **No Windows client is built anywhere.** `windows-headless` stops at the
+  engine. Adding the GUI means openal-soft, freealut, ogg/vorbis, epoxy,
+  freetype and Qt5 through vcpkg, which is build time and a cache key, not an
+  open question — it has been built by hand on the Windows machine already.
+- **The macOS bundle is published for inspection, not for playing.**
+  `tools/osx_bundle_libs` re-anchors rpaths to absolute paths on the build
+  machine and the signature is ad-hoc, so Gatekeeper refuses it anywhere else.
+  Relocatability is the fixable half; a Developer ID and notarisation are a
+  purchase, not a patch.
+
+Neither blocks anything. The release exists and is honest about both.
 
 ### Not a work item
 
