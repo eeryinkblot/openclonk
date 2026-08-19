@@ -92,7 +92,7 @@
 1 0 Tests.ocf/Benchmarks.ocs
 2 0 Tests.ocf/CableCars.ocs
 0 0 Tests.ocf/ClonkAttachments.ocs
-10 0 Tests.ocf/ColorfulLights.ocs
+1 0 Tests.ocf/ColorfulLights.ocs
 0 0 Tests.ocf/ExplodeContainer.ocs
 0 0 Tests.ocf/FileSystem.ocs
 0 0 Tests.ocf/IncludeTest.ocs
