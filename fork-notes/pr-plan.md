@@ -485,7 +485,7 @@ Consider splitting `6333d5498` off into its own PR; it is clean, while
 
 | Commits | Files |
 | --- | --- |
-| `4d1e0ba08`, `18a459494`, `660a1f8f1`, `41c1b6f30`, `c2336894d`, `52be316de` | `CLAUDE.md` |
+| `4d1e0ba08`, `18a459494`, `660a1f8f1`, `41c1b6f30`, `c2336894d`, `52be316de`, `9bd0c8776` | `CLAUDE.md` |
 | — | `ROADMAP.md` |
 | — | `fork-notes/` |
 
