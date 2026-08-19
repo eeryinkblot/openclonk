@@ -198,7 +198,8 @@ guard already watching it, so none of them can grow while it waits.
 | | |
 | --- | --- |
 | #56 | Twelve undefined-behaviour sites the sanitizer job pins. Five are the script engine's integer semantics, two the landscape's polygon rasterisation. Suggested order is in the issue: `StdBuf.h` first, script engine and landscape last and separately, since both are desync-relevant |
-| #55 | Seven scenarios that do not link cleanly. `ColorfulLights.ocs` has the clearest cause — nine globals declared in both `Script.c` and the generated `Objects.c` |
+| #55 | Six scenarios that do not link cleanly and have no diagnosis. The rule the issue records: split one out once it has a cause, leave it on the list while it is only a count |
+| #59 | Split out of #55 as the one with a cause — `ColorfulLights.ocs` declares nine globals in both `Script.c` and the generated `Objects.c`. Labelled `good first issue`, since the fix is small but teaches the pin convention |
 | #47 | `MakeTempFilename` hands out a name it does not claim. Two disabled tests state the contract a fix has to meet |
 | #57 | The engine writes its whole configuration back over any `--config` file, and persists failure states it never revisits — the `Sound=0` trap is the instance that has cost time |
 | #58 | The first-run player dialog logs nothing, so the test hunting #37 cannot show it tested the right path. One log line fixes it |

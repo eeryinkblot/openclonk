@@ -21,7 +21,8 @@
 #                                     generated Objects.c:3 both declare, plus
 #                                     one suspicious_assignment at
 #                                     Script.c:24, which is a deliberate
-#                                     assignment inside an if.
+#                                     assignment inside an if. #59 -- fixing it
+#                                     takes this line to "1 0", not "0 0".
 #   Tests.ocf/SkeletonAppend.ocs      2 warnings, one a FindObject call still
 #                                     using the Clonk 4 signature.
 #   Tests.ocf/CableCars.ocs           2 warnings.
