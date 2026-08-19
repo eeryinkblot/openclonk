@@ -569,7 +569,8 @@ carrying:
   equality, and the range has to cover every state the seed can produce.
 - A position observed twice is not established. The claim that all three
   platforms land the rock at `[372, 157]` "bit-identically" was recorded here,
-  in `ci.md` and in `ROADMAP.md` from single runs per platform; it was one of
+  in `ci.md` and in the roadmap of the day, from single runs per platform; it
+  was one of
   two values each of them produces. See [Repetition is not corroboration](#repetition-is-not-corroboration)
   — this one was worse than repetition, it was three observations of a coin
   that lands on its edge half the time.

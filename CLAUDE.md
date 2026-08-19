@@ -20,10 +20,13 @@ than up front:
 | `decisions.md` | Why each change has the shape it does, and which alternatives were rejected |
 | `ci.md` | What the GitHub Actions workflow checks, and the environment constraints behind it |
 | `platforms.md` | What is known to work on which machine, and what is only assumed |
+| `lessons.md` | How this work has gone wrong before, as method rather than as incident |
 | `pr-plan.md` | How the commits group into eventual pull requests |
 
 `decisions.md` is the one to reach for before reworking something that already looks
 odd — several of the alternatives rejected there are the obvious first idea.
+`lessons.md` is short and worth reading once before estimating anything: every
+entry in it is a mistake made here that looked like diligence at the time.
 
 `CLAUDE.md`, `ROADMAP.md` and `fork-notes/` are fork-local and must never end up in
 a PR branch.
