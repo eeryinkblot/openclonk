@@ -460,6 +460,26 @@ pass on upstream master until everything above has landed. The two tests/
 commits stand on their own without it: the tool becomes runnable and gains a
 `--expect` mode whether or not anything automated calls it.
 
+### PR 24 — startup: log which player-file path was taken
+
+| | |
+| --- | --- |
+| Commits | `63c3419c7` |
+| Files | `src/gui/C4StartupMainDlg.cpp` |
+| Effect | A first start and an ordinary one stop being indistinguishable in the log |
+
+Small and self-contained: one `LogSilentF` in each branch of the `if` in
+`C4StartupMainDlg::OnShown`, plus a copy of the found filename out of the
+`DirectoryIterator`, whose storage does not outlive the loop.
+
+Lead with the debugging argument rather than the CI one — upstream does not run
+this fork's workflow, but anyone reading a user's log has the same problem: the
+modal player-creation dialog leaves no trace at all, and it is the one path a
+startup crash has been seen in. The `LogSilent` level is the point to make
+second: nothing new appears on screen for an ordinary player.
+
+The CI half (`8585f0226`) is fork-local and belongs to PR 10.
+
 ### PR 5 — macOS: audio and app bundling
 
 | | |
