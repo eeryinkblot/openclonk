@@ -330,6 +330,7 @@ void C4StartupMainDlg::OnShown()
 	// first thing that's needed is a new player, if there's none - independent of first start
 	bool fHasPlayer = false;
 	StdStrBuf sSearchPath(Config.General.UserDataPath);
+	StdStrBuf sPlayerFile;
 	const char *szFn;
 //  sSearchPath.Format("%s%s", (const char *) Config.General.ExePath, (const char *) Config.General.PlayerPath);
 	for (DirectoryIterator i(sSearchPath.getData()); (szFn=*i); i++)
@@ -338,13 +339,26 @@ void C4StartupMainDlg::OnShown()
 		if (*GetFilename(szFn) == '.') continue; // ignore ".", ".." and private files (".*")
 		if (!WildcardMatch(C4CFN_PlayerFiles, GetFilename(szFn))) continue;
 		fHasPlayer = true;
+		// copied: the name points into the iterator's own storage, which
+		// does not outlive the loop
+		sPlayerFile.Copy(GetFilename(szFn));
 		break;
 	}
+	// Which branch this takes is otherwise invisible from outside the process:
+	// a first start and an ordinary one produce the same log, in the same
+	// order. Say which one happened, so that a run against an empty user
+	// directory can be shown to have reached the modal dialog rather than the
+	// main menu.
 	if (!fHasPlayer)
 	{
+		LogSilentF("Startup: no player file in %s, opening player creation", sSearchPath.getData());
 		// no player created yet: Create one
 		C4GUI::Dialog *pDlg;
 		GetScreen()->ShowModalDlg(pDlg=new C4StartupPlrPropertiesDlg(nullptr, nullptr), true);
+	}
+	else
+	{
+		LogSilentF("Startup: player file %s found, skipping player creation", sPlayerFile.getData());
 	}
 	// make sure participants are updated after switching back from player selection
 	UpdateParticipants();
