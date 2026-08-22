@@ -867,6 +867,17 @@ jobs:
           # C4DrawGL.cpp and needs no such care.
           grep -q "Loading graphics" gui.log \
             || { echo "::error::the engine did not get as far as loading graphics"; status=1; }
+          # The player file copied in above is the fixture for this step: with
+          # it, C4StartupMainDlg::OnShown skips the modal dialog that #37
+          # crashes in, which is why this step can gate at all. Since #58 the
+          # branch says so in the log, so assert it rather than assume it -- a
+          # directory that stopped counting as "has a player" would otherwise
+          # move this step onto the flaky path without changing a line of output.
+          #
+          # LogSilent goes to the log file and not to stdout, so this looks at
+          # the engine's own log rather than at gui.log.
+          grep -h "skipping player creation" ci-userdata/OpenClonk*.log \
+            || { echo "::error::the engine did not find the player file, so this step ran the first-run path it is meant to avoid"; status=1; }
           if [ "$alive" -eq 0 ]; then
             echo "::error::the engine exited before it could be stopped"
             status=1
@@ -877,28 +888,32 @@ jobs:
           fi
           exit $status
 
-      # Deliberately not gating. #37 is an intermittent segfault in the modal
+      # Not gating on the crash. #37 is an intermittent segfault in the modal
       # player-creation dialog, seen once in six launches by hand and never
-      # reproduced since. The path is reached only when the user directory holds
+      # reproduced in CI. The path is reached only when the user directory holds
       # no player file, so this starts the engine five times against an empty
       # one and counts the crashes.
       #
       # A crash here is a *finding*, not a build failure -- it is evidence for a
       # bug that has none, gathered on every push for about a minute.
-      - name: Hunt the first-run crash (#37, not gating)
-        continue-on-error: true
+      #
+      # The fixture does gate, though, which is what #58 bought: both branches
+      # of C4StartupMainDlg::OnShown now log which one they took, so five
+      # launches of the ordinary menu can no longer report themselves as five
+      # clean first-run launches. A broken test is a build failure; a
+      # reproduced bug is a finding.
+      - name: Hunt the first-run crash (#37, gating on the fixture only)
         run: |
           crashes=0
+          shown=0
+          status=0
           for i in $(seq 5); do
             rm -rf firstrun-userdata
             mkdir -p firstrun-userdata
 
-            # The fixture is the whole test. This path is reached only when the
-            # user directory holds no *.ocp, and nothing in the engine logs that
-            # the dialog opened -- so a directory that quietly stopped being
-            # empty would leave this step reporting "0 crashes" while actually
-            # exercising the ordinary startup. Check the condition it rests on.
-            # Making the path observable at all is #58.
+            # Belt and braces: the log lines below say which branch the engine
+            # took, and this says the directory was empty to begin with. The
+            # second is cheaper to read when it fails.
             if [ -n "$(find firstrun-userdata -maxdepth 1 -name '*.ocp' -print -quit)" ]; then
               echo "::error::firstrun-userdata is not empty, so this is not the first-run path"
               exit 1
@@ -921,15 +936,46 @@ jobs:
               sleep 1
             done
             sleep 4
-            if ! kill -0 $pid 2>/dev/null; then
-              echo "::warning::run $i: the engine died before it was stopped -- possible #37"
-              tail -20 "firstrun-$i.log"
-              crashes=$((crashes + 1))
-            fi
+
+            # Liveness alone under-reports the crash. backward-cpp symbolises
+            # every frame with source context before it re-raises, which takes
+            # seconds on a binary this size -- long enough that a crashed engine
+            # is often still running when we look. The trace it writes is the
+            # reliable signal; the liveness check stays for a death that leaves
+            # no trace at all.
+            crashed=no
+            kill -0 $pid 2>/dev/null || crashed=yes
+            grep -qE "Stack trace|Caught signal|Segmentation fault" \
+              "firstrun-$i.log" firstrun-userdata/OpenClonk*.log 2>/dev/null && crashed=yes
             kill -9 $pid 2>/dev/null || true
             wait $pid 2>/dev/null || true
+
+            if [ "$crashed" = yes ]; then
+              echo "::warning::run $i: the engine crashed -- possible #37"
+              tail -40 "firstrun-$i.log"
+              crashes=$((crashes + 1))
+            fi
+
+            # Which path the engine actually took (#58).
+            if grep -qh "opening player creation" firstrun-userdata/OpenClonk*.log 2>/dev/null; then
+              shown=$((shown + 1))
+            elif grep -qh "skipping player creation" firstrun-userdata/OpenClonk*.log 2>/dev/null; then
+              echo "::error::run $i: the engine found a player file in a directory we emptied, so this launch exercised the ordinary menu"
+              status=1
+            elif [ "$crashed" = yes ]; then
+              echo "::warning::run $i: the engine crashed before it reached the player check"
+            else
+              echo "::error::run $i: the engine never reached C4StartupMainDlg::OnShown"
+              status=1
+            fi
           done
-          echo "$crashes of 5 first-run launches died on their own"
+          echo "$shown of 5 first-run launches opened the player creation dialog"
+          echo "$crashes of 5 first-run launches crashed"
+          if [ "$shown" -eq 0 ]; then
+            echo "::error::no launch reached the dialog, so this step hunted nothing"
+            status=1
+          fi
+          exit $status
 
       # The client this job just started, with the editor compiled into it, and
       # mape. Not an install: the game data is a separate artifact, and music
