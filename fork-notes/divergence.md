@@ -1459,6 +1459,55 @@ machine.
 
 ---
 
+## 32. `63c3419c7` — a first start and an ordinary one produced the same log
+
+**Files:** `src/gui/C4StartupMainDlg.cpp`
+
+### Motivation
+
+`C4StartupMainDlg::OnShown` scans the user directory for `*.ocp` and opens a
+modal `C4StartupPlrPropertiesDlg` when it finds none. Neither branch logged
+anything, and that dialog logs nothing at all, so the two startups are
+indistinguishable from outside the process — same lines, in the same order.
+
+That dialog is the only place an intermittent startup segfault has ever been
+seen (#37), and the CI step that hunts it can do nothing but empty a directory
+and hope. If the directory ever stopped counting as empty — a default player, a
+stray file, a change to what matches `C4CFN_PlayerFiles` — the step would keep
+reporting five clean first-run launches while starting the ordinary menu five
+times (#58).
+
+### Technical effect
+
+One `LogSilentF` per branch, naming the directory that was searched or the file
+that was found. `LogSilent` goes to the log file only, so nothing appears on the
+message board or the console in normal use.
+
+The found name is copied into a `StdStrBuf`: `DirectoryIterator::operator*`
+returns a pointer into a `std::string` owned by the iterator's shared state,
+which does not outlive the `for` statement.
+[ADR-025](decisions.md#adr-025--make-the-startup-path-observable-in-the-engine-rather-than-inferring-it-outside).
+
+### Risk
+
+None to gameplay — the function is startup-only and the calls have no side
+effects. The strings are new log lines, not localised text, and no test parses
+the log by position.
+
+### What it bought immediately
+
+`8585f0226` turns both CI launches into tests of the path they claim to take:
+the gating launch asserts the player file was found, and the hunt gates on the
+fixture while still only warning about the crash.
+
+Verified on Linux in both directions with a throwaway `--config`: an empty
+directory logs `no player file in …, opening player creation`, one holding
+`Test.ocp` logs `player file Test.ocp found, skipping player creation`. Seven
+first-run launches produced the line seven times — and **one of them reproduced
+#37**, which is the first stack trace that bug has ever had.
+
+---
+
 ## Not addressed
 
 Known, deliberately left alone:

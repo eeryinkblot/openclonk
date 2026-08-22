@@ -38,19 +38,7 @@ linted, but nothing asserts what they *do* — they carry no `doTest()`.
 
 ## The order
 
-### 1. #58 — one log line, so the #37 hunt stops being decorative
-
-Cheapest thing on the list with something depending on it. The CI step that
-hunts #37 starts the engine five times against an empty user directory, and
-neither branch of the condition it depends on logs anything — so it cannot show
-it took the path it exists to take. A `LogSilentF` in each branch of
-`C4StartupMainDlg::OnShown` makes the fixture assertable, which lets the
-with-dialog case gate on *having tested the right thing* while still only
-warning about the crash.
-
-Half an hour, and it converts a step that might be theatre into one that is not.
-
-### 2. #56 — the twelve undefined-behaviour sites, in the issue's order
+### 1. #56 — the twelve undefined-behaviour sites, in the issue's order
 
 Located, pinned, and none of them can grow while they wait. Take them in the
 order the issue gives, which is by how much argument each needs:
@@ -65,14 +53,14 @@ order the issue gives, which is by how much argument each needs:
    map. Each wants the scenario suite run on all three platforms either side of
    the change, which the CI matrix now gives for free.
 
-### 3. #59 — nine globals declared twice
+### 2. #59 — nine globals declared twice
 
 A `good first issue` on purpose: small, self-contained, and it teaches the pin
 convention, since the fix has to lower `tests/scenario-lint-expected.txt` in the
 same commit. Leave it for someone else if anyone shows up; do it in ten minutes
 if nobody does.
 
-### 4. #57 — the engine persists failures it never revisits
+### 3. #57 — the engine persists failures it never revisits
 
 `Sound=0` written permanently after one run without a device is the instance
 that has cost time here, and it is documented in `CLAUDE.md` as folk knowledge
@@ -80,7 +68,7 @@ rather than tracked as a defect. The valuable part is (1) in that issue: do not
 persist what nobody chose. A read-only config mode is what CI wanted and is
 worth less.
 
-### 5. #46 — build the editor on macOS
+### 4. #46 — build the editor on macOS
 
 The only item that needs a specific machine. The Qt6 support exists now and
 Homebrew has Qt6, so `-DHEADLESS_ONLY=OFF` should configure with
@@ -91,7 +79,7 @@ event plumbing has never been exercised, which is exactly the half #8 could not
 test when it left the editor branch of the mouse handler alone. A successful
 link proves nothing about whether the viewport draws or mouse events arrive.
 
-### 6. Investigations with no known bottom
+### 5. Investigations with no known bottom
 
 One at a time, when someone has the appetite. None blocks anything.
 
@@ -100,16 +88,16 @@ One at a time, when someone has the appetite. None blocks anything.
 | #51 | `ObjectInteractionMenu.ocs` fails 14 of 328. **Narrowed**: GCC, clang and MSVC report the identical failures, so it is one bug everywhere and can be diagnosed on whichever machine is convenient |
 | #43 | Four memory-safety warnings from GCC 16, untriaged. The `C4ObjectAction` one is uninitialised reads in game logic, i.e. a desync source |
 | #42 | `C4Config` violates the ODR under `WITH_AUTOMATIC_UPDATE`. Real UB; which translation unit disagrees is not established |
-| #37 | Intermittent segfault in the first-run player dialog. CI attempts it five times per push and reports without gating; 0 of 5 so far. See #58 first |
+| #37 | Intermittent segfault in the first-run player dialog. **It has a stack trace now**, from one reproduction of seven launches on the Linux machine while verifying #58: a null `C4Facet` reached through `C4GUI::Window::Draw` → `DrawElement`, on a real GPU and a real display where CI has only ever run llvmpipe under Xvfb. CI attempts it five times per push, warns rather than gates, and since `8585f0226` looks for the trace rather than for a dead process |
 | #38 | UPnP has never been exercised anywhere. Needs a router with IGD, not a build machine — the one thing here no amount of CI can reach |
 
-### 7. #55 — the six scenarios with no diagnosis
+### 6. #55 — the six scenarios with no diagnosis
 
 Two warnings each, cause unknown, pinned so they cannot grow. The rule the issue
 records: **split one out once it has a cause, leave it on the list while it is
 only a count.** #59 is what that looks like.
 
-### 8. #24 — what a release still cannot carry
+### 7. #24 — what a release still cannot carry
 
 Half of it is done: a tag now publishes the tools for all three platforms, the
 Linux client, the game data and the macOS bundle, and

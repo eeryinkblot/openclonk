@@ -276,26 +276,40 @@ a client rather than inspecting one:
 
 | Step | Guards against |
 | --- | --- |
-| Start under `xvfb-run` with a throwaway config, assert a GL context, `Loading graphics...`, and that the process is still alive | `C4Window`, `C4DrawGL` and the SDL main loop compiling but not working |
-| Five first-run launches against an empty user directory, **not gating** | nothing — it is evidence-gathering for #37 |
+| Start under `xvfb-run` with a throwaway config, assert a GL context, `Loading graphics...`, that the process is still alive, and that the engine reports **skipping player creation** | `C4Window`, `C4DrawGL` and the SDL main loop compiling but not working — and the fixture that keeps this step off the crashing path silently ceasing to work |
+| Five first-run launches against an empty user directory, gating on the **fixture** and not on the crash | a hunt that reports five clean launches of the wrong thing; the crash itself stays a warning |
 
 The gate takes the *stable* path deliberately. `C4StartupMainDlg::OnShown` opens
 a modal player-creation dialog when the user directory holds no `*.ocp`, and
 that is where #37 crashes, roughly one launch in six by hand. Gating on it would
 make the job flaky for a defect it cannot fix, so the gate gets a player file
-copied in and the hunt runs beside it with `continue-on-error`. First run on a
-runner: **0 of 5 died**, `GL 4.5 (Core Profile) Mesa 25.2.8 on llvmpipe`.
+copied in and the hunt runs beside it. First run on a runner: **0 of 5 died**,
+`GL 4.5 (Core Profile) Mesa 25.2.8 on llvmpipe`.
 
-**Neither branch of that `if` logs anything**, which is the weak point and is
-worth knowing before trusting the hunt. From outside the process a first-run
-start and an ordinary one are identical, so a user directory that quietly
-stopped being empty would leave the step reporting "0 of 5 died" while starting
-the ordinary menu five times — green, unchanged, and testing nothing, exactly
-like the scenarios in #27. The step therefore asserts the one thing it *can*
-see, that the directory holds no `*.ocp` before each launch, and fails hard when
-it does. Making the path itself observable is one log line in the engine, #58,
-and would let the with-dialog case gate on the fixture while still only warning
-about the crash.
+Until `63c3419c7`, **neither branch of that `if` logged anything**, so from
+outside the process a first-run start and an ordinary one were identical: a user
+directory that quietly stopped being empty would have left the step reporting
+"0 of 5 died" while starting the ordinary menu five times — green, unchanged,
+and testing nothing, exactly like the scenarios in #27. It now says which branch
+it took (#58), and both steps assert on it:
+
+- The **gating** launch fails if the player file it copied in was not found.
+  That step is allowed to gate precisely because the fixture keeps it off the
+  crashing path, and nothing checked that the fixture worked.
+- The **hunt** fails if a launch took the has-player branch, or if no launch
+  reached the dialog at all, and only warns when a launch opened the dialog and
+  died. A broken test is a build failure; a reproduced bug is a finding.
+
+`LogSilent` writes to the engine's log file and not to stdout, so both
+assertions read `*-userdata/OpenClonk*.log` rather than the captured output.
+
+**The hunt no longer decides by liveness alone.** `backward-cpp` symbolises
+every frame with source context before it re-raises, which takes seconds on a
+binary this size — reproducing #37 on the Linux machine, the process was still
+running four seconds after the fault with a complete stack trace already in its
+log. A step that checks `kill -0` at that moment records a healthy engine. It
+now greps the run for `Stack trace|Caught signal|Segmentation fault` as well,
+and keeps the liveness check for a death that leaves no trace.
 
 Costs 13 seconds for the launch and 25 for the hunt, on a job whose build alone
 is 398.

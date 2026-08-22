@@ -89,13 +89,34 @@ that quietly stopped being empty would leave the step reporting "0 of 5 died"
 while starting the ordinary menu five times — green, unchanged, and testing
 nothing.
 
-Same shape as #27 and as the lint. The interim guard is to assert the
-*fixture* — that the directory really is empty — and the real fix is one log
-line in the engine (#58).
+Same shape as #27 and as the lint. The interim guard was to assert the
+*fixture* — that the directory really is empty — which restates the input where
+the question is which branch the engine took. `63c3419c7` logs the branch, and
+both launches now assert on it (#58).
 
 **The habit:** for any test whose subject is a *path* rather than a value, ask
 what would happen if the path were not taken. If the answer is "it passes", the
-test is decoration until the path is observable.
+test is decoration until the path is observable. Note how cheap the real fix
+was — two log lines — next to how long it sat behind an interim guard.
+
+## Look for the effect, not for the moment
+
+The same hunt decided whether the engine had crashed by asking whether the
+process was still alive, four seconds after startup. It is the obvious check and
+it is wrong here: `backward-cpp` symbolises every frame with source context
+before it re-raises, which takes **seconds** on a binary this size. The one
+reproduction of #37 on this machine was still running at that moment, with a
+complete stack trace already flushed to its log. The step would have recorded a
+healthy engine and moved on.
+
+A crash that is still being printed has not finished happening. Liveness is a
+sample of a fast-moving state; the trace in the log is a record that stays true
+afterwards.
+
+**The habit:** detect a failure by the durable evidence it leaves, not by a
+state you have to catch it in. When a check has to be timed, ask what the
+slowest path through the thing you are watching costs — and prefer the artefact
+that is still there a minute later.
 
 ## Pin in both directions
 

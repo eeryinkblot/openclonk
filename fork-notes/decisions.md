@@ -809,3 +809,46 @@ sets CMP0067 and CMP0069 to NEW by itself, which is what the deleted blocks did
 by hand — the IPO check now runs unconditionally instead of behind
 `if(POLICY CMP0069)`. Unrelated policy warnings (CMP0071 on the autogen path)
 are untouched and still there.
+
+## ADR-025 — Make the startup path observable in the engine rather than inferring it outside
+
+**Context.** The CI step that hunts #37 starts the client five times against an
+empty user directory, because `C4StartupMainDlg::OnShown` only opens the modal
+player-creation dialog when it finds no `*.ocp`. Neither branch of that `if`
+logged anything, so the step could show that it had *started* the engine five
+times but not that it had reached the dialog even once.
+
+**Decision.** One `LogSilentF` in each branch of the engine, and both CI
+launches assert on it — the gating one that the player file was found, the hunt
+that it was not.
+
+**Alternatives.**
+
+- *Assert the fixture from outside — check the directory is empty before each
+  launch.* This is what the step did in the interim, and it stays. It catches
+  the realistic drift and nothing else: it restates the input, where the
+  question is which branch the engine took given that input. A change to what
+  `C4CFN_PlayerFiles` matches, or an engine that creates a player of its own,
+  moves the two apart without touching the directory.
+- *Detect the dialog from outside — a screenshot, an X window title, a pixel.*
+  Turns a one-line question into a second test harness, and the answer would
+  still be a guess about what is on screen.
+- *Add a diagnostic flag (`--dump-startup-state`) instead of logging.* New
+  surface, used by exactly one caller, and only observable when someone
+  remembers to pass it. The log is already the interface everything else in
+  this workflow reads.
+- *Use `Log` rather than `LogSilent`.* It would put a line about player files
+  on the message board and the console of every ordinary start, for the benefit
+  of a test. `LogSilent` writes to the file, which is where CI looks.
+
+**Consequences.** The with-dialog case can now gate on having tested the right
+thing while still only warning about the crash, which is the division this fork
+wants everywhere: *a broken test is a build failure, a reproduced bug is a
+finding*. The lines are engine behaviour rather than CI behaviour, so they hold
+for anyone debugging a first start by hand — and the first run of them
+reproduced #37 with a stack trace.
+
+The same change forced a second correction in the hunt: it had been detecting
+the crash by whether the process was still alive, and `backward-cpp` takes
+seconds to symbolise a trace before it re-raises, so a crashed engine usually
+still is. The trace it writes is the signal; liveness is the fallback.
