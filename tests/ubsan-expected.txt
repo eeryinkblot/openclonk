@@ -42,18 +42,4 @@ src/script/C4AulCompiler.cpp:898:18  # constant-folding negates INT_MIN, into th
 src/landscape/C4Landscape.cpp:1171:30  # (i2[0] - i1[0]) << 16
 src/landscape/C4Landscape.cpp:1172:19  # i1[0] << 16
 
-# --- overflow used as a mechanism -----------------------------------------
-#
-# Distance() squares two 64-bit differences and then checks `if (d2 < 0)` for
-# the overflow it just risked. Detecting signed overflow after the fact is
-# precisely what a compiler may assume cannot happen, and delete the check for.
-src/lib/Standard.cpp:28:10           # dx*dx + dy*dy in Distance()
-
-# --- number parsing --------------------------------------------------------
-#
-# StrToI32 multiplies and accumulates without a range check, so a script literal
-# larger than int32 overflows during parsing.
-src/lib/Standard.cpp:144:10          # result *= base
-src/lib/Standard.cpp:145:10          # result += value
-src/lib/Standard.cpp:148:9           # result *= sign
 

@@ -32,7 +32,7 @@
         </param>
       </params>
     </syntax>
-    <desc>Calculates the distance between two points. Same as Sqrt((x2-x1)^2 + (y2-y1)^2;).</desc>
+    <desc>Calculates the distance between two points. Same as Sqrt((x2-x1)^2 + (y2-y1)^2;). Returns -1 if the two points are so far apart that the distance does not fit in an integer.</desc>
     <examples>
       <example>
         <code><funclink>GetCursor</funclink>(0)-&gt;Message(&quot;Quick, you are only %d Clonks away from the goal!&quot;, Distance(<funclink>GetX</funclink>(<funclink>GetCursor</funclink>(0)), <funclink>GetY</funclink>(<funclink>GetCursor</funclink>(0)), 1000, 200));</code>

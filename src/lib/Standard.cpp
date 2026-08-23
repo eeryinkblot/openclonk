@@ -24,9 +24,21 @@
 
 int32_t Distance(int32_t iX1, int32_t iY1, int32_t iX2, int32_t iY2)
 {
+	// The differences need 33 bits and their squares 66, so the sum overflows
+	// for far-apart points. Testing the result for it afterwards -- which is
+	// what `if (d2 < 0)` did -- is exactly the check a compiler may delete,
+	// having assumed the overflow it follows cannot happen. Reject the operands
+	// instead: -1 is what this function has always answered for a distance it
+	// cannot return.
 	int64_t dx = int64_t(iX1)-iX2, dy = int64_t(iY1)-iY2;
+	if (dx < 0) dx = -dx;
+	if (dy < 0) dy = -dy;
+	if (dx > INT32_MAX || dy > INT32_MAX) return -1;
+	// Both components fit in 31 bits now, so this is at most 2*(2^31-1)^2,
+	// which an int64_t holds.
 	int64_t d2 = dx*dx+dy*dy;
-	if (d2 < 0) return -1;
+	// ...and a distance beyond INT32_MAX does not fit in the result.
+	if (d2 > int64_t(INT32_MAX)*INT32_MAX) return -1;
 	int32_t dist = int32_t(sqrt(double(d2)));
 	if (int64_t(dist)*dist < d2) ++dist;
 	if (int64_t(dist)*dist > d2) --dist;
@@ -121,7 +133,10 @@ int32_t StrToI32(const char *str, int base, const char **scan_end)
 {
 	const char *s = str;
 	int sign = 1;
-	int32_t result = 0;
+	// Accumulated where wrapping is defined rather than where it is undefined.
+	// A literal too large for 32 bits has always come out truncated; unsigned
+	// arithmetic keeps that and drops the undefined behaviour.
+	uint32_t result = 0;
 	if (*s == '-')
 	{
 		sign = -1;
@@ -141,12 +156,11 @@ int32_t StrToI32(const char *str, int base, const char **scan_end)
 	{
 		int value = ToNumber(*s++);
 		assert (value < base && value >= 0);
-		result *= base;
-		result += value;
+		result = result * uint32_t(base) + uint32_t(value);
 	}
 	if (scan_end != nullptr) *scan_end = s;
-	result *= sign;
-	return result;
+	if (sign < 0) result = uint32_t(0) - result;
+	return WrapToInt32(result);
 }
 
 void SCopy(const char *szSource, char *sTarget, size_t iMaxL)

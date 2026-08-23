@@ -38,6 +38,19 @@ inline InplaceReconstruct(T *obj)
 	new (obj) T();
 }
 
+// Two's-complement wraparound as a defined operation. Signed overflow is
+// undefined, so the places that have to wrap -- C4Script's integer arithmetic,
+// which specifies wraparound and is tested for it, and parsing a literal that
+// does not fit -- compute in uint32_t and come back through here. The
+// conversion itself is only implementation-defined before C++20, hence the long
+// way round rather than a cast; it compiles to nothing.
+inline int32_t WrapToInt32(uint32_t value)
+{
+	return value <= uint32_t(INT32_MAX)
+	       ? int32_t(value)
+	       : int32_t(value - uint32_t(INT32_MIN)) + INT32_MIN;
+}
+
 // Small helpers
 template <class T> inline T Abs(T val) { return val > 0 ? val : -val; }
 template <class T, class U, class V> inline bool Inside(T ival, U lbound, V rbound) { return ival >= lbound && ival <= rbound; }
