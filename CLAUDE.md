@@ -330,6 +330,20 @@ cmd /c mklink /J "$PWD\build-gui\Music.ocg" "$PWD\planet\Music.ocg"
 `openclonk-server` has to be killed to stop it: `C4StdInProc` is compiled out on
 Windows, so closing stdin does nothing.
 
+**Where `C4StdInProc` *is* compiled — everywhere but Windows — the opposite trap
+applies: the engine quits the moment stdin closes.** (Measured on Linux; the file
+has no platform-specific code, so macOS follows by construction rather than by
+having been tried.) `C4StdInProc::Execute` calls `Application.Quit()` when `read(0, ...)`
+returns anything but one byte, so a run started from a script, a `&`-backgrounded
+command or any non-interactive shell exits **before it loads anything** — status
+2, and a log that goes straight from `WARNING: Engine without Gamepad support` to
+`Game cleared.` / `Engine shut down.` with no error in between. It looks exactly
+like a scenario that failed to load. Keep a pipe open:
+
+```sh
+sleep 300 | ./build/openclonk-server --language=US planet/Tests.ocf/Movement.ocs "$PWD/planet/Test.ocp"
+```
+
 ## Tests
 
 Two independent test layers.
