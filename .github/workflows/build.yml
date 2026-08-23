@@ -433,10 +433,12 @@ jobs:
   # prior use was by hand, upstream, in 2f837fc1a: "Fix two allocate-deallocate
   # mismatches. Found by ASan."
   #
-  # ASan gates outright, because it reports nothing today. UBSan reports twelve
-  # sites, pinned in tests/ubsan-expected.txt the way every other known-broken
-  # thing here is pinned: a new site fails the job, and so does a pinned site
-  # that stops being reported. #54.
+  # Both gate outright now. ASan always did, because it reported nothing; UBSan
+  # reported twelve sites when this job was written, pinned in
+  # tests/ubsan-expected.txt the way every other known-broken thing here is
+  # pinned. #56 worked through all twelve, so that file is a header and no
+  # entries -- and the rule it describes is unchanged: a site that is not listed
+  # fails the job, and so does a listed site that stops being reported. #54.
   sanitizers:
     name: Sanitizers — ubuntu-latest
     runs-on: ubuntu-latest

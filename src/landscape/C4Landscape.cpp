@@ -1168,8 +1168,14 @@ static void fill_edge_structure(CPolyEdge *edge, int *i1, int *i2)
 	}
 	edge->y = i1[1];
 	edge->bottom = i2[1] - 1;
-	edge->dx = ((i2[0] - i1[0]) << POLYGON_FIX_SHIFT) / (i2[1] - i1[1]);
-	edge->x = (i1[0] << POLYGON_FIX_SHIFT) + (1 << (POLYGON_FIX_SHIFT - 1)) - 1;
+	// Multiplied rather than shifted: both operands go negative for ordinary
+	// maps, and shifting a negative value left is undefined before C++20. The
+	// wrapping multiply is bit-for-bit what the shift produced on every machine
+	// this has run on, overflow included -- which is the property that matters
+	// here, because the landscape has to come out identical on every client in
+	// a round and a compiler is otherwise free to answer differently.
+	edge->dx = WrapMul(i2[0] - i1[0], 1 << POLYGON_FIX_SHIFT) / (i2[1] - i1[1]);
+	edge->x = WrapAdd(WrapMul(i1[0], 1 << POLYGON_FIX_SHIFT), (1 << (POLYGON_FIX_SHIFT - 1)) - 1);
 	edge->prev = nullptr;
 	edge->next = nullptr;
 	if (edge->dx < 0)
