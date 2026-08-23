@@ -320,6 +320,18 @@ size, so a crashed engine is usually still running when a step looks.
 The shell was tried against a real engine in both directions before it was
 pushed: it passes on `3ba4f6fea` and fails on its parent.
 
+**`xvfb-run` is a shell script and does not pass signals on to what it starts.**
+`kill $!` therefore stops the wrapper and leaves the engine running, which the
+gating launch had been doing since it was written — leaking an engine into the
+rest of the job, invisibly, because nothing looked. The regression step then
+signalled `pgrep -x openclonk | head -1`, killed that leftover, watched it exit
+and waited forever on its own engine: a 45-minute job timeout on its first run.
+
+Both steps now take the pid from `pgrep`, the gating one fails if any engine
+survives it, the regression one requires exactly one engine to be running before
+it signals, and every wait is bounded. A bare `wait` is the difference between a
+step that fails in seconds and a step that hangs until the job is cancelled.
+
 Costs 13 seconds for the launch and about 15 for the first-run test, on a job whose build alone
 is 398.
 

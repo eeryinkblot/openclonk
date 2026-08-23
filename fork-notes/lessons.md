@@ -142,6 +142,12 @@ what the reproduction attempt does that a user would not — how it starts, how 
 stops, what it waits for — and vary that first. And keep the corpse: a core file
 answers questions a symbolised stack trace cannot.
 
+**The same lesson bit again the same day**, one layer out: the replacement test
+hung for 45 minutes because `xvfb-run` is a shell script that does not pass
+signals on, so `kill $!` had been stopping the wrapper and leaving the engine
+running for as long as that job has existed. Ask what the pid you are holding
+actually is.
+
 ## Pin in both directions
 
 Every known-broken thing here is pinned to an exact count — assertion failures
