@@ -888,37 +888,23 @@ jobs:
           fi
           exit $status
 
-      # Not gating on the crash. #37 is an intermittent segfault in the modal
-      # player-creation dialog, seen once in six launches by hand and never
-      # reproduced in CI. The path is reached only when the user directory holds
-      # no player file, so this starts the engine five times against an empty
-      # one and counts the crashes.
+      # #37 used to be an intermittent segfault hunted here by starting the
+      # engine five times against an empty user directory and counting the
+      # deaths. It was never intermittent: any quit while the modal
+      # player-creation dialog is open used to destroy the objects whose
+      # methods were still on the stack, and the reason this step reported
+      # "0 of 5" on every push for months is that it stopped the engine with
+      # kill -9, which is the one way of stopping it that cannot reproduce it.
       #
-      # A crash here is a *finding*, not a build failure -- it is evidence for a
-      # bug that has none, gathered on every push for about a minute.
-      #
-      # The fixture does gate, though, which is what #58 bought: both branches
-      # of C4StartupMainDlg::OnShown now log which one they took, so five
-      # launches of the ordinary menu can no longer report themselves as five
-      # clean first-run launches. A broken test is a build failure; a
-      # reproduced bug is a finding.
-      - name: Hunt the first-run crash (#37, gating on the fixture only)
+      # So this is a regression test now, and it gates. Start against an empty
+      # user directory, wait for the engine to say it opened the dialog (#58),
+      # ask it to quit the way a user closing the window does, and require it
+      # to go away by itself without leaving a trace behind.
+      - name: Quit at the first-run dialog (#37 regression)
         run: |
-          crashes=0
-          shown=0
-          status=0
-          for i in $(seq 5); do
-            rm -rf firstrun-userdata
-            mkdir -p firstrun-userdata
-
-            # Belt and braces: the log lines below say which branch the engine
-            # took, and this says the directory was empty to begin with. The
-            # second is cheaper to read when it fails.
-            if [ -n "$(find firstrun-userdata -maxdepth 1 -name '*.ocp' -print -quit)" ]; then
-              echo "::error::firstrun-userdata is not empty, so this is not the first-run path"
-              exit 1
-            fi
-            cat > firstrun.config <<EOF
+          rm -rf firstrun-userdata
+          mkdir -p firstrun-userdata
+          cat > firstrun.config <<EOF
           [General]
           UserDataPath="$PWD/firstrun-userdata/"
 
@@ -927,52 +913,52 @@ jobs:
           WindowX=1024
           WindowY=768
           EOF
-            xvfb-run -a --server-args="-screen 0 1024x768x24" \
-              env LIBGL_ALWAYS_SOFTWARE=1 \
-              ./build-client/openclonk --language=US --config="$PWD/firstrun.config" > "firstrun-$i.log" 2>&1 &
-            pid=$!
-            for _ in $(seq 40); do
-              grep -qE "^\[[0-9:]+\] GL [0-9]" "firstrun-$i.log" && break
-              sleep 1
-            done
-            sleep 4
+          xvfb-run -a --server-args="-screen 0 1024x768x24" \
+            env LIBGL_ALWAYS_SOFTWARE=1 \
+            ./build-client/openclonk --language=US --config="$PWD/firstrun.config" > firstrun.log 2>&1 &
+          wrapper=$!
 
-            # Liveness alone under-reports the crash. backward-cpp symbolises
-            # every frame with source context before it re-raises, which takes
-            # seconds on a binary this size -- long enough that a crashed engine
-            # is often still running when we look. The trace it writes is the
-            # reliable signal; the liveness check stays for a death that leaves
-            # no trace at all.
-            crashed=no
-            kill -0 $pid 2>/dev/null || crashed=yes
-            grep -qE "Stack trace|Caught signal|Segmentation fault" \
-              "firstrun-$i.log" firstrun-userdata/OpenClonk*.log 2>/dev/null && crashed=yes
-            kill -9 $pid 2>/dev/null || true
-            wait $pid 2>/dev/null || true
-
-            if [ "$crashed" = yes ]; then
-              echo "::warning::run $i: the engine crashed -- possible #37"
-              tail -40 "firstrun-$i.log"
-              crashes=$((crashes + 1))
-            fi
-
-            # Which path the engine actually took (#58).
-            if grep -qh "opening player creation" firstrun-userdata/OpenClonk*.log 2>/dev/null; then
-              shown=$((shown + 1))
-            elif grep -qh "skipping player creation" firstrun-userdata/OpenClonk*.log 2>/dev/null; then
-              echo "::error::run $i: the engine found a player file in a directory we emptied, so this launch exercised the ordinary menu"
-              status=1
-            elif [ "$crashed" = yes ]; then
-              echo "::warning::run $i: the engine crashed before it reached the player check"
-            else
-              echo "::error::run $i: the engine never reached C4StartupMainDlg::OnShown"
-              status=1
-            fi
+          status=0
+          for _ in $(seq 40); do
+            grep -qh "opening player creation" firstrun-userdata/OpenClonk*.log 2>/dev/null && break
+            sleep 1
           done
-          echo "$shown of 5 first-run launches opened the player creation dialog"
-          echo "$crashes of 5 first-run launches crashed"
-          if [ "$shown" -eq 0 ]; then
-            echo "::error::no launch reached the dialog, so this step hunted nothing"
+          if grep -qh "opening player creation" firstrun-userdata/OpenClonk*.log 2>/dev/null; then
+            echo "the engine reports it opened the player-creation dialog"
+          else
+            echo "::error::the engine never opened the player-creation dialog, so this tested nothing"
+            status=1
+          fi
+          sleep 2
+
+          # The signal has to reach the engine and not xvfb-run, which is what
+          # $wrapper is. SIGTERM arrives as an SDL_QUIT, i.e. the same path as
+          # closing the window; SIGKILL would test nothing.
+          engine=$(pgrep -x openclonk | head -1)
+          if [ -z "$engine" ]; then
+            echo "::error::no openclonk process to signal"
+            status=1
+          else
+            kill -TERM "$engine"
+            for _ in $(seq 20); do kill -0 "$engine" 2>/dev/null || break; sleep 1; done
+            if kill -0 "$engine" 2>/dev/null; then
+              echo "::error::the engine was still running 20s after being asked to quit"
+              kill -9 "$engine" 2>/dev/null || true
+              status=1
+            fi
+          fi
+          wait $wrapper 2>/dev/null || true
+
+          echo "::group::engine log"
+          cat firstrun.log
+          echo "::endgroup::"
+
+          # backward-cpp needs seconds to symbolise before it re-raises, so the
+          # trace it leaves is the reliable signal and not whether the process
+          # happened to be alive at any given moment.
+          if grep -qE "Stack trace|Caught signal|Segmentation fault|double free|corruption" \
+               firstrun.log firstrun-userdata/OpenClonk*.log 2>/dev/null; then
+            echo "::error::the engine crashed while quitting from the player-creation dialog (#37)"
             status=1
           fi
           exit $status
