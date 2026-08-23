@@ -480,6 +480,26 @@ second: nothing new appears on screen for an ordinary player.
 
 The CI half (`8585f0226`) is fork-local and belongs to PR 10.
 
+### PR 25 — startup: do not free the startup data from inside its own message loop
+
+| | |
+| --- | --- |
+| Commits | `3ba4f6fea` |
+| Files | `src/game/C4Application.cpp` |
+| Effect | Closing the window at the first-run "create a player" dialog stops crashing |
+
+The strongest PR in this plan, and the one to lead with if only one is ever
+sent: a reproducible crash on a path every new player walks, fixed by moving two
+calls, with before/after counts on the same build.
+
+Write the description around the *user* path — `C4FullScreen::Close()` calls
+`Quit()` whenever no game is running — and mention SIGTERM only as the second
+way in. Say that the obvious one-line fix (null-check `C4Startup::Get()` in
+`C4StartupPlrPropertiesDlg::DrawElement`) was tried and moves the crash to a
+heap corruption in `UpdateParticipants`; a reviewer will suggest it otherwise.
+
+Depends on nothing. Cherry-picks onto upstream master unchanged.
+
 ### PR 5 — macOS: audio and app bundling
 
 | | |
@@ -505,7 +525,7 @@ Consider splitting `6333d5498` off into its own PR; it is clean, while
 
 | Commits | Files |
 | --- | --- |
-| `4d1e0ba08`, `18a459494`, `660a1f8f1`, `41c1b6f30`, `c2336894d`, `52be316de`, `9bd0c8776` | `CLAUDE.md` |
+| `4d1e0ba08`, `18a459494`, `660a1f8f1`, `41c1b6f30`, `c2336894d`, `52be316de`, `9bd0c8776`, `e3b78c5b3` | `CLAUDE.md` |
 | — | `ROADMAP.md` |
 | — | `fork-notes/` |
 

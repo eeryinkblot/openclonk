@@ -1508,6 +1508,63 @@ first-run launches produced the line seven times — and **one of them reproduce
 
 ---
 
+## 33. `3ba4f6fea` — quitting from a modal dialog freed what the stack was standing on
+
+**Files:** `src/game/C4Application.cpp`
+
+### Motivation
+
+`C4Application::Quit()` deleted the startup graphics and the fonts and *then*
+asked the app to stop. That is safe from the main loop and unsafe from anywhere
+else, and the engine has an "anywhere else": `C4GUI::Screen::ShowModalDlg` runs
+a nested message loop, so a quit arriving inside one destroys the objects whose
+methods are still on the stack.
+
+`C4StartupMainDlg::OnShown` opens exactly such a dialog on a first start, which
+is why #37 only ever appeared there.
+
+### Technical effect
+
+`Quit()` now saves the config and asks the app to stop, nothing else. The
+unloading moves to the top of `C4Application::Clear()`, which runs after
+`Run()` has returned — the stack has unwound — and before `Game.Clear()`
+destroys the GUI screen that shares ownership of those dialogs.
+[ADR-026](decisions.md#adr-026--free-the-startup-data-in-clear-not-in-quit).
+
+### Two crashes, one cause
+
+| | |
+| --- | --- |
+| **SIGSEGV at address 0** | `C4Startup::Unload()` nulls the singleton, the dialog draws one more frame, and `C4StartupPlrPropertiesDlg::DrawElement` reads `C4Startup::Get()->Graphics.fctPlrPropBG`. `Get()`'s `assert` is compiled out under NDEBUG; `Graphics`, `fctPlrPropBG` and `C4Facet::Surface` all sit at offset 0, so the null check *inside* `C4Facet::Draw` reads through a null `this` |
+| **`double free or corruption`** | suppress the draw and this appears instead: `~C4Startup` also deletes `pCurrDlg`, which is the main dialog `OnShown` is a method of, so `ShowModalDlg` returns into freed memory and `UpdateParticipants` writes a label into it |
+
+The second is why guarding the draw is not a fix — it moves the symptom.
+
+### Risk
+
+The frees still happen on every exit path, and earlier than before rather than
+later: `Clear()` runs whether or not `Quit()` did. Nothing else reads the
+startup graphics after the main loop ends.
+
+Measured on Linux, same build either side:
+
+| | before | after |
+| --- | --- | --- |
+| Quit at the dialog, SIGTERM | 5 of 5 crashed | 0 of 5 |
+| Quit at the dialog, window close | 1 of 1 crashed | 0 of 1 |
+| Quit at the menu, with a player file | 0 of 3 | 0 of 3 |
+| A game started and quit; headless `Movement.ocs` | — | unchanged, 3 tests 0 failed |
+
+### Not a test artefact
+
+`C4FullScreen::Close()` calls `Quit()` whenever no game is running, so closing
+the window at the "create a player" dialog is the user-facing form of this — and
+a first-time player looking at that dialog is exactly who might. Verified with a
+real `WM_DELETE_WINDOW`. SIGTERM reaches the same path through SDL, which is how
+the CI hunt stumbled into it.
+
+---
+
 ## Not addressed
 
 Known, deliberately left alone:

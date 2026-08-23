@@ -277,7 +277,7 @@ a client rather than inspecting one:
 | Step | Guards against |
 | --- | --- |
 | Start under `xvfb-run` with a throwaway config, assert a GL context, `Loading graphics...`, that the process is still alive, and that the engine reports **skipping player creation** | `C4Window`, `C4DrawGL` and the SDL main loop compiling but not working — and the fixture that keeps this step off the crashing path silently ceasing to work |
-| Five first-run launches against an empty user directory, gating on the **fixture** and not on the crash | a hunt that reports five clean launches of the wrong thing; the crash itself stays a warning |
+| One first-run launch, quit with SIGTERM at the dialog, **gating** | #37 coming back: the engine must open the dialog, then exit by itself within 20s leaving no trace in either log |
 
 The gate takes the *stable* path deliberately. `C4StartupMainDlg::OnShown` opens
 a modal player-creation dialog when the user directory holds no `*.ocp`, and
@@ -296,22 +296,31 @@ it took (#58), and both steps assert on it:
 - The **gating** launch fails if the player file it copied in was not found.
   That step is allowed to gate precisely because the fixture keeps it off the
   crashing path, and nothing checked that the fixture worked.
-- The **hunt** fails if a launch took the has-player branch, or if no launch
-  reached the dialog at all, and only warns when a launch opened the dialog and
-  died. A broken test is a build failure; a reproduced bug is a finding.
+- The **first-run** step waits for the dialog and then quits the engine, which
+  is a regression test rather than a hunt since `3ba4f6fea` fixed #37. It fails
+  if the dialog never opened (so it cannot pass by testing nothing), if the
+  engine does not exit on its own, or if either log holds a crash trace.
 
 `LogSilent` writes to the engine's log file and not to stdout, so both
 assertions read `*-userdata/OpenClonk*.log` rather than the captured output.
 
-**The hunt no longer decides by liveness alone.** `backward-cpp` symbolises
-every frame with source context before it re-raises, which takes seconds on a
-binary this size — reproducing #37 on the Linux machine, the process was still
-running four seconds after the fault with a complete stack trace already in its
-log. A step that checks `kill -0` at that moment records a healthy engine. It
-now greps the run for `Stack trace|Caught signal|Segmentation fault` as well,
-and keeps the liveness check for a death that leaves no trace.
+**How the step stops the engine is the whole test.** It used to send `kill -9`
+five times and count the deaths, which is why it reported "0 of 5" on every push
+while #37 was reproducible on demand: SIGKILL is the one way of stopping a
+process that cannot run its quit path, and the quit path was the bug. It now
+sends **SIGTERM**, which SDL delivers as an `SDL_QUIT` — the same path as a user
+closing the window — and to the engine rather than to `xvfb-run`, which is what
+`$!` holds here.
 
-Costs 13 seconds for the launch and 25 for the hunt, on a job whose build alone
+It also greps both logs for `Stack trace|Caught signal|Segmentation fault|double
+free` rather than deciding by liveness: `backward-cpp` symbolises every frame
+with source context before it re-raises, which takes seconds on a binary this
+size, so a crashed engine is usually still running when a step looks.
+
+The shell was tried against a real engine in both directions before it was
+pushed: it passes on `3ba4f6fea` and fails on its parent.
+
+Costs 13 seconds for the launch and about 15 for the first-run test, on a job whose build alone
 is 398.
 
 Three things that had to be right, all found by running it on a development

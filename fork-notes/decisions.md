@@ -852,3 +852,45 @@ The same change forced a second correction in the hunt: it had been detecting
 the crash by whether the process was still alive, and `backward-cpp` takes
 seconds to symbolise a trace before it re-raises, so a crashed engine usually
 still is. The trace it writes is the signal; liveness is the fallback.
+
+## ADR-026 — Free the startup data in `Clear()`, not in `Quit()`
+
+**Context.** `C4Application::Quit()` deleted the startup graphics and the fonts
+before asking the app to stop. `C4GUI::Screen::ShowModalDlg` runs a nested
+message loop, so a quit can arrive while `C4StartupMainDlg::OnShown` is still on
+the stack — and the objects `Quit()` deletes are the ones that stack is inside
+of. Two different crashes follow (#37), a null-singleton draw and a
+use-after-free of the dialog itself.
+
+**Decision.** `Quit()` saves the config and asks the app to stop. The unloading
+moves to the top of `C4Application::Clear()`, after `Run()` has returned and
+before `Game.Clear()` destroys the GUI screen.
+
+**Alternatives.**
+
+- *Null-check `C4Startup::Get()` in `C4StartupPlrPropertiesDlg::DrawElement`.*
+  The obvious one-liner, and it fixes the crash that was reported. It also
+  leaves the object graph inconsistent and the second crash live: with the draw
+  suppressed the same run aborts in `UpdateParticipants` instead, writing a
+  label into a dialog that `~C4Startup` has already deleted. Measured, not
+  assumed — that is what the first attempt did.
+- *Skip drawing while `AppState == C4AS_Quit`.* Same objection, one level up,
+  and it was the second attempt. Worth keeping in mind as hygiene; it is not a
+  fix.
+- *Close the startup dialogs in `Quit()` before unloading.* `DontStartup()`
+  deletes `pCurrDlg`, which is the dialog whose `OnShown` is on the stack. It
+  makes the use-after-free certain rather than likely.
+- *Free at the end of `Clear()` instead of the top.* Tried, crashes: by then
+  `Game.Clear()` has destroyed the GUI screen, which deletes the dialogs it
+  holds, and `~C4Startup` deletes them again. Ownership of `pCurrDlg` is shared
+  between `C4Startup` and the screen, and the original code got away with it
+  only because `Quit()` ran first.
+
+**Consequences.** The frees happen on every exit path rather than only on the
+ones that call `Quit()`, and slightly earlier in `Clear()` than the rest of the
+teardown. Nothing reads the startup graphics after the main loop ends, and a
+game started from the client, quit with SIGTERM, still shuts down clean.
+
+The general shape is worth keeping: **a function that asks the application to
+stop must not free anything, because it can be called from a nested loop.**
+`Quit()` now says so in a comment.

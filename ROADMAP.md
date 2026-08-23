@@ -81,14 +81,17 @@ link proves nothing about whether the viewport draws or mouse events arrive.
 
 ### 5. Investigations with no known bottom
 
-One at a time, when someone has the appetite. None blocks anything.
+One at a time, when someone has the appetite. None blocks anything. #37 came
+off this list on 2026-08-23: it was never intermittent, and the fix is
+`3ba4f6fea` — see the lesson it left in
+[`lessons.md`](fork-notes/lessons.md), which is about how it was hunted rather
+than about the engine.
 
 | | |
 | --- | --- |
 | #51 | `ObjectInteractionMenu.ocs` fails 14 of 328. **Narrowed**: GCC, clang and MSVC report the identical failures, so it is one bug everywhere and can be diagnosed on whichever machine is convenient |
 | #43 | Four memory-safety warnings from GCC 16, untriaged. The `C4ObjectAction` one is uninitialised reads in game logic, i.e. a desync source |
 | #42 | `C4Config` violates the ODR under `WITH_AUTOMATIC_UPDATE`. Real UB; which translation unit disagrees is not established |
-| #37 | Intermittent segfault in the first-run player dialog. **It has a stack trace now**, from one reproduction of seven launches on the Linux machine while verifying #58: a null `C4Facet` reached through `C4GUI::Window::Draw` → `DrawElement`, on a real GPU and a real display where CI has only ever run llvmpipe under Xvfb. CI attempts it five times per push, warns rather than gates, and since `8585f0226` looks for the trace rather than for a dead process |
 | #38 | UPnP has never been exercised anywhere. Needs a router with IGD, not a build machine — the one thing here no amount of CI can reach |
 
 ### 6. #55 — the six scenarios with no diagnosis

@@ -118,6 +118,30 @@ state you have to catch it in. When a check has to be timed, ask what the
 slowest path through the thing you are watching costs — and prefer the artefact
 that is still there a minute later.
 
+## "Intermittent" can mean you are triggering it by accident
+
+#37 sat open for two weeks as an intermittent segfault: seen once by hand, never
+again, and hunted on every push by five launches that reported **0 of 5** for
+months. It is not intermittent. Any quit while the first-run player-creation
+dialog is open crashes, every time.
+
+The hunt could not see it because of how it *stopped* the engine: `kill -9`,
+which is the one way of stopping a process that cannot run its quit path. The
+one reproduction came from a step that used `kill` first — the crash was
+triggered by the observer, and nobody looked at that difference because a
+segfault at startup reads as a startup bug.
+
+What broke it open was reading the core rather than the trace: two globals,
+`C4Startup::pInstance == nullptr` and `AppState == C4AS_Quit`, turned "somewhere
+in the dialog" into "during a quit" in one step. From there SIGTERM reproduced
+it 5 of 5, and a real window close confirmed it was a user's bug and not a test
+harness's.
+
+**The habit:** when a bug is rare, suspect the *trigger* before the code. List
+what the reproduction attempt does that a user would not — how it starts, how it
+stops, what it waits for — and vary that first. And keep the corpse: a core file
+answers questions a symbolised stack trace cannot.
+
 ## Pin in both directions
 
 Every known-broken thing here is pinned to an exact count — assertion failures
