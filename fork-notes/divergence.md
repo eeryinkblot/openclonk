@@ -1620,7 +1620,7 @@ gets justified:
 
 ### Risk
 
-Low and measured. The suite ran either side: 106 unit tests, and 912 scenario
+Low and measured. The suite ran either side: 107 unit tests, and 912 scenario
 assertions matching their pins exactly, including the 14 `ObjectInteractionMenu`
 failures that are #51. UBSan now reports **nothing at all** across four test
 binaries, twelve group packs and a scenario, so the job gates outright the way

@@ -25,7 +25,7 @@ are green, and no cell in the platform matrix is "derived" any more.
 | --- | --- |
 | CI jobs | 9, all green |
 | Platforms building `HEADLESS_ONLY` | all three, in CI |
-| Unit tests | 106 over four binaries, plus 2 disabled that state a known defect (#47) |
+| Unit tests | 107 over four binaries, plus 2 disabled that state a known defect (#47) |
 | Scenario assertions | 912, on all three platforms, agreeing assertion for assertion including which 14 fail |
 | Scenarios script-linted | 99 of 99; 92 clean, 7 pinned |
 | Undefined behaviour | **none reported**: all 12 UBSan sites fixed (#56), ASan clean everywhere |
