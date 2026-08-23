@@ -148,6 +148,25 @@ signals on, so `kill $!` had been stopping the wrapper and leaving the engine
 running for as long as that job has existed. Ask what the pid you are holding
 actually is.
 
+## Check the whole domain when the whole domain is small
+
+The landscape fix in #56 rests on one claim: that multiplying by 65536 gives the
+same 32-bit pattern the old left shift gave. That is the kind of claim this file
+already has an entry about believing too easily — "the rock lands at [372, 157]
+on all three platforms" was three single runs of something with two outcomes.
+
+A 32-bit function has 4,294,967,296 possible inputs, and a loop over all of them
+takes about four seconds. So it was not sampled: **every** coordinate was
+checked, against the old expression compiled with `-fwrapv` so that "old" meant
+what it did rather than what it was entitled to do. `StrToI32` and `Distance`
+got 400,000 inputs each for the same reason, being two-argument and four-argument
+functions where exhaustive is not on offer.
+
+**The habit:** before sampling, count the domain. One argument of 32 bits or
+fewer, or two of 16, is exhaustible on a laptop in the time it takes to write
+the sampling code — and it answers a different question. Where it is not
+exhaustible, say how many inputs were tried and what the comparison was against.
+
 ## Pin in both directions
 
 Every known-broken thing here is pinned to an exact count — assertion failures

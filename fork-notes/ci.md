@@ -219,7 +219,7 @@ ever been built with `-fsanitize=` — the one prior use is upstream's own
 | | |
 | --- | --- |
 | **ASan** | gates outright. Nothing reported across four test binaries, packing twelve groups, and a scenario, so anything at all is new. |
-| **UBSan** | twelve sites pinned in `tests/ubsan-expected.txt`, failing in both directions. |
+| **UBSan** | gates outright too, since #56. It reported twelve sites when this job was written; `tests/ubsan-expected.txt` is now a header with no entries, and the mechanism stays for the next finding that cannot be fixed the day it is found. |
 
 Only `file:line:column` is compared. The messages carry operand values that vary
 with the input — `2147483647 + 1`, `left shift of negative value -5` — so
@@ -233,23 +233,33 @@ Three things about the job that are easy to remove by accident:
   close to a regression test as that defect can have. The packing output goes
   into the same log set that is scanned afterwards.
 - **It runs a scenario.** That is the only thing here that reaches the game
-  loop, and two of the twelve sites are reported by nothing else:
-  `fill_edge_structure()` shifts negative coordinates left to build a
+  loop, and two of the twelve sites were reported by nothing else:
+  `fill_edge_structure()` shifted negative coordinates left to build a
   fixed-point edge slope for landscape polygons, which is undefined before
-  C++20.
+  C++20. Fixed in `c21d5c5eb`; the scenario is still the only reason anyone
+  would have known.
 - **`-fno-sanitize=vptr` is not a preference.** The vptr check emits typeinfo
   references, and `tests` links `libc4script`, whose standalone host stubs
   `C4Def` out, so the link fails with `undefined reference to 'typeinfo for
   C4Def'` before anything runs.
 
-**The pinned sites are findings, not noise.** Five are the script engine's
-integer semantics: `aul_test` asserts that `2147483647 + 1` equals `INT_MIN`,
-and `C4AulExec` produces that by plain signed overflow, so a guarantee of the
-language rests on undefined behaviour — in an engine whose correctness model is
-bit-identical results across compilers. One more is `Distance()` in
-`Standard.cpp`, which squares two 64-bit differences and then writes
-`if (d2 < 0)` to catch the overflow it just risked; detecting signed overflow
-after the fact is exactly what a compiler may assume cannot happen, and delete.
+**The pinned sites were findings, not noise**, which is why they are gone.
+Five were the script engine's integer semantics: `aul_test` asserts that
+`2147483647 + 1` equals `INT_MIN`, and `C4AulExec` produced that by plain signed
+overflow, so a guarantee of the language rested on undefined behaviour — in an
+engine whose correctness model is bit-identical results across compilers. One
+more was `Distance()` in `Standard.cpp`, which squared two 64-bit differences
+and then wrote `if (d2 < 0)` to catch the overflow it just risked; detecting
+signed overflow after the fact is exactly what a compiler may assume cannot
+happen, and delete.
+
+All twelve were worked through in `c2ddb4072`, `e3b7da79c`, `4a4d51c0c` and
+`c21d5c5eb` — see
+[34](divergence.md#34-c2ddb4072-e3b7da79c-4a4d51c0c-c21d5c5eb--twelve-places-the-engine-relied-on-undefined-behaviour).
+The job now says something stronger than "unchanged": **no undefined behaviour
+is reported at all**, on every push, across the unit tests, the packer and a
+scenario. What it does *not* cover is undefined behaviour UBSan cannot reach —
+the shift operators (#61) and GCC 16's memory-safety warnings (#43).
 
 ### `linux-client` — `ubuntu-latest`, Qt5 **and** Qt6
 

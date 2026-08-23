@@ -894,3 +894,50 @@ game started from the client, quit with SIGTERM, still shuts down clean.
 The general shape is worth keeping: **a function that asks the application to
 stop must not free anything, because it can be called from a nested loop.**
 `Quit()` now says so in a comment.
+
+## ADR-027 — Preserve the answers rather than define them anew
+
+**Context.** #56 listed twelve places where the engine relied on undefined
+behaviour. Most of them produce a value that content, tests or the landscape
+already depends on: C4Script's wraparound is specified and asserted, an
+out-of-range literal has always truncated, and the polygon rasteriser's shifts
+feed map geometry. Removing the undefined behaviour means choosing what the code
+does instead.
+
+**Decision.** Keep the answer the old code gave on the machines it ran on, and
+change only how it is reached: compute in `uint32_t`, where wrapping is defined,
+and convert back through `WrapToInt32`. Verify the equality by measurement --
+exhaustively where the domain allows it -- rather than by argument.
+
+**Alternatives.**
+
+- *Build with `-fwrapv`.* One flag, all the signed-overflow sites defined at
+  once, no source change. Rejected for three reasons: it defines the behaviour
+  of code that has no business wrapping as much as of code that must, so the
+  next real overflow bug becomes invisible; it silences the sanitizer that found
+  these, which is the tool this fork just gained; and it is a GCC/clang flag
+  with no MSVC equivalent, so the Windows build would keep the undefined
+  behaviour and the guarantee would hold on two platforms out of three. A
+  desync-relevant property defended by a flag one compiler honours is not
+  defended.
+- *Give the operations sensible modern semantics -- clamp `StrToI32` the way
+  `strtol` does, make `Distance` saturate.* Cleaner as an interface, and wrong
+  here: content in the wild was written against the truncating one, and this
+  fork cannot survey the content. Preserving an odd answer is cheaper than
+  discovering which scenario depended on it.
+- *Loosen the tests instead.* `AulMathTest` asserts `2147483647 + 1 == INT_MIN`
+  because bug 1389 established it as the language's behaviour. The tests are
+  right; the implementation was.
+- *Compute in `int64_t` and narrow.* Works for `Distance`, and for the script
+  engine it moves the problem: narrowing an out-of-range `int64_t` to `int32_t`
+  is implementation-defined too, and the intermediate would have to be truncated
+  at exactly the right point to keep the same answers.
+
+**Consequences.** `Distance()` gains the one deliberate behaviour change in the
+set: -1 where it used to return a number derived from an overflowed square. That
+is the value the function already used for "a distance I cannot return", and the
+old one was not a distance. It is now documented, which it never was.
+
+`WrapToInt32` and friends live in `src/lib/Standard.h` because three unrelated
+subsystems need the same thing. They are the place to reach for if the shift
+operators (#61) are ever settled.

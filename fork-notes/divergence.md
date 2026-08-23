@@ -1565,6 +1565,77 @@ the CI hunt stumbled into it.
 
 ---
 
+## 34. `c2ddb4072`, `e3b7da79c`, `4a4d51c0c`, `c21d5c5eb` — twelve places the engine relied on undefined behaviour
+
+**Files:** `src/lib/StdBuf.h`, `src/lib/Standard.{h,cpp}`, `src/script/C4AulExec.cpp`,
+`src/script/C4AulCompiler.cpp`, `src/landscape/C4Landscape.cpp`, plus
+`tests/StandardTest.cpp` and `tests/aul/AulMathTest.cpp`
+
+### Motivation
+
+The sanitizer job (`240293816`) reported twelve UBSan sites and pinned them
+(#56). Two of the groups are desync-relevant, which is what made this worth
+doing rather than tidying: gameplay is lockstep, clients exchange inputs rather
+than state, and undefined behaviour is precisely where two builds are free to
+disagree.
+
+| Where | What it was | Commit |
+| --- | --- | --- |
+| `StdBuf::Compare` | `memcmp` with two null pointers on an empty compare | `c2ddb4072` |
+| `Distance()` | squares two 64-bit differences, then tests `if (d2 < 0)` for the overflow it just risked | `e3b7da79c` |
+| `StrToI32()` | accumulates a literal that need not fit in 32 bits | `e3b7da79c` |
+| `C4AulExec`, `C4AulCompiler` | C4Script's `+ - * ** ++ -- unary-` and the compile-time fold, all in signed C++ | `4a4d51c0c` |
+| `fill_edge_structure()` | shifts negative coordinates left to build a fixed-point edge slope | `c21d5c5eb` |
+
+### Technical effect
+
+One rule throughout: **keep the answer, drop the undefined behaviour.**
+`src/lib/Standard.h` gains `WrapToInt32` and `WrapAdd/Sub/Mul/Neg`, which
+compute in `uint32_t` and convert back the long way round — the conversion is
+implementation-defined rather than undefined before C++20, and the helper
+compiles to nothing.
+[ADR-027](decisions.md#adr-027--preserve-the-answers-rather-than-define-them-anew).
+
+Two deliberate exceptions to "keep the answer":
+
+- `Distance()` returns **-1** where it used to return a positive number derived
+  from an overflowed square. -1 is what that function has always meant by "a
+  distance I cannot return", and the old value was not a distance.
+- `4a4d51c0c` wraps six operators where four were reported. `AB_Mul`, the
+  runtime `AB_Neg` and `Pow()` are the same expression class and overflow the
+  same way; nothing exercises them today, and leaving three of six would have
+  been arbitrary.
+
+### How it was verified
+
+Not by reasoning about the standard, which is how this class of change usually
+gets justified:
+
+| | |
+| --- | --- |
+| `StrToI32` | 400,076 inputs — edge literals and random digit strings in bases 2..16 — against the old version built with `-fwrapv`, so "old" means what it did rather than what it was entitled to do. **0 differences**, `scan_end` included |
+| `Distance` | 400,000 coordinate quadruples, map-sized and extreme. **0 differences wherever the old result was a representable distance**; 179,407 differ, all of them the overflow case |
+| The landscape shifts | **exhaustive**: all 4,294,967,296 possible coordinates for `edge->x`, and the `edge->dx` numerator likewise. 0 differences |
+| The script engine | the new `AulMathTest` assertions pass **on the engine as it was**, checked by stashing the four source files and rebuilding |
+
+### Risk
+
+Low and measured. The suite ran either side: 106 unit tests, and 912 scenario
+assertions matching their pins exactly, including the 14 `ObjectInteractionMenu`
+failures that are #51. UBSan now reports **nothing at all** across four test
+binaries, twelve group packs and a scenario, so the job gates outright the way
+ASan already did.
+
+### What is still undefined and not covered
+
+`<<` and `>>` in C4Script (#61): undefined for negative values and for counts at
+or beyond the word size, not reported because nothing in the suite shifts that
+far, and — unlike the arithmetic — with no specified answer to preserve. That
+makes it a decision rather than a repair, so it is its own issue. GCC 16's four
+memory-safety warnings (#43) are the other half UBSan does not reach.
+
+---
+
 ## Not addressed
 
 Known, deliberately left alone:

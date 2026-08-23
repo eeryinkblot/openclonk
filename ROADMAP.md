@@ -25,10 +25,10 @@ are green, and no cell in the platform matrix is "derived" any more.
 | --- | --- |
 | CI jobs | 9, all green |
 | Platforms building `HEADLESS_ONLY` | all three, in CI |
-| Unit tests | 101 over four binaries, plus 2 disabled that state a known defect (#47) |
+| Unit tests | 106 over four binaries, plus 2 disabled that state a known defect (#47) |
 | Scenario assertions | 912, on all three platforms, agreeing assertion for assertion including which 14 fail |
 | Scenarios script-linted | 99 of 99; 92 clean, 7 pinned |
-| Undefined behaviour | 12 sites pinned, ASan clean everywhere |
+| Undefined behaviour | **none reported**: all 12 UBSan sites fixed (#56), ASan clean everywhere |
 | The client | built against Qt5 **and** Qt6, and launched under Xvfb |
 | Downloads | every run uploads its build outputs; a `v*` tag publishes them as a release (#23) |
 
@@ -38,29 +38,14 @@ linted, but nothing asserts what they *do* — they carry no `doTest()`.
 
 ## The order
 
-### 1. #56 — the twelve undefined-behaviour sites, in the issue's order
-
-Located, pinned, and none of them can grow while they wait. Take them in the
-order the issue gives, which is by how much argument each needs:
-
-1. **`StdBuf.h:168`** — `memcmp` with null pointers on an empty compare. Two
-   lines, no behaviour change to discuss.
-2. **`Standard.cpp`** — `Distance()` checking `if (d2 < 0)` for an overflow it
-   just risked, and `StrToI32` accumulating without a range check.
-3. **The script engine and the landscape, separately and last.** Both are
-   desync-relevant: `C4AulExec`'s integer semantics are *asserted* by
-   `aul_test`, and `fill_edge_structure()` shifts negative coordinates for every
-   map. Each wants the scenario suite run on all three platforms either side of
-   the change, which the CI matrix now gives for free.
-
-### 2. #59 — nine globals declared twice
+### 1. #59 — nine globals declared twice
 
 A `good first issue` on purpose: small, self-contained, and it teaches the pin
 convention, since the fix has to lower `tests/scenario-lint-expected.txt` in the
 same commit. Leave it for someone else if anyone shows up; do it in ten minutes
 if nobody does.
 
-### 3. #57 — the engine persists failures it never revisits
+### 2. #57 — the engine persists failures it never revisits
 
 `Sound=0` written permanently after one run without a device is the instance
 that has cost time here, and it is documented in `CLAUDE.md` as folk knowledge
@@ -68,7 +53,7 @@ rather than tracked as a defect. The valuable part is (1) in that issue: do not
 persist what nobody chose. A read-only config mode is what CI wanted and is
 worth less.
 
-### 4. #46 — build the editor on macOS
+### 3. #46 — build the editor on macOS
 
 The only item that needs a specific machine. The Qt6 support exists now and
 Homebrew has Qt6, so `-DHEADLESS_ONLY=OFF` should configure with
@@ -79,7 +64,7 @@ event plumbing has never been exercised, which is exactly the half #8 could not
 test when it left the editor branch of the mouse handler alone. A successful
 link proves nothing about whether the viewport draws or mouse events arrive.
 
-### 5. Investigations with no known bottom
+### 4. Investigations with no known bottom
 
 One at a time, when someone has the appetite. None blocks anything. #37 came
 off this list on 2026-08-23: it was never intermittent, and the fix is
@@ -92,15 +77,16 @@ than about the engine.
 | #51 | `ObjectInteractionMenu.ocs` fails 14 of 328. **Narrowed**: GCC, clang and MSVC report the identical failures, so it is one bug everywhere and can be diagnosed on whichever machine is convenient |
 | #43 | Four memory-safety warnings from GCC 16, untriaged. The `C4ObjectAction` one is uninitialised reads in game logic, i.e. a desync source |
 | #42 | `C4Config` violates the ODR under `WITH_AUTOMATIC_UPDATE`. Real UB; which translation unit disagrees is not established |
+| #61 | C4Script's shift operators are undefined for negative values and counts past the word size. Split out of #56 while fixing it: unlike the arithmetic there is no specified answer to preserve, so it is a decision (mask, saturate, or throw like division by zero already does) rather than a repair |
 | #38 | UPnP has never been exercised anywhere. Needs a router with IGD, not a build machine — the one thing here no amount of CI can reach |
 
-### 6. #55 — the six scenarios with no diagnosis
+### 5. #55 — the six scenarios with no diagnosis
 
 Two warnings each, cause unknown, pinned so they cannot grow. The rule the issue
 records: **split one out once it has a cause, leave it on the list while it is
 only a count.** #59 is what that looks like.
 
-### 7. #24 — what a release still cannot carry
+### 6. #24 — what a release still cannot carry
 
 Half of it is done: a tag now publishes the tools for all three platforms, the
 Linux client, the game data and the macOS bundle, and

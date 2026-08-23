@@ -500,6 +500,31 @@ heap corruption in `UpdateParticipants`; a reviewer will suggest it otherwise.
 
 Depends on nothing. Cherry-picks onto upstream master unchanged.
 
+### PR 26 — remove the engine's reliance on undefined behaviour
+
+| | |
+| --- | --- |
+| Commits | `c2ddb4072`, `e3b7da79c`, `4a4d51c0c`, `c21d5c5eb` |
+| Files | `src/lib/StdBuf.h`, `src/lib/Standard.{h,cpp}`, `src/script/C4AulExec.cpp`, `src/script/C4AulCompiler.cpp`, `src/landscape/C4Landscape.cpp`, `tests/StandardTest.cpp`, `tests/aul/AulMathTest.cpp`; `tests/ubsan-expected.txt` is fork-local, split that hunk out |
+| Effect | UBSan reports nothing across the tests, the packer and a scenario |
+
+Send the four as one PR or as four; they are independent, and the order in the
+issue is the order to read them in. `tests/ubsan-expected.txt` belongs to the
+fork's sanitizer job and has no meaning upstream — drop those hunks when
+cherry-picking, and keep the two test files, which do.
+
+Lead with the desync argument rather than with the sanitizer: two of the groups
+are gameplay-visible, and upstream's own model is bit-identical results across
+clients. Then say that nothing changes: the wraparound is the same wraparound,
+proven exhaustively for the landscape shifts and over 800,000 inputs for the two
+`Standard.cpp` functions, and the new `AulMathTest` assertions pass on the
+unpatched engine.
+
+The one behaviour change is `Distance()` returning -1 for a separation it cannot
+express, where it used to return a number derived from an overflowed square. Say
+so in the description rather than letting a reviewer find it; the docs change in
+the same commit is the honest version of it.
+
 ### PR 5 — macOS: audio and app bundling
 
 | | |

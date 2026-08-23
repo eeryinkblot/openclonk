@@ -514,8 +514,11 @@ cmake --build build-asan --target tests aul_test StdMeshMath determinism --paral
 twelve groups with a sanitized `c4group` and a full scenario run. That is why
 the job added in `240293816` gates on ASan outright rather than pinning it.
 
-**UBSan reports twelve sites**, all 101 tests still passing — these are
-diagnostics, not failures:
+**UBSan reported twelve sites** when this was first measured, all 101 tests
+still passing — diagnostics rather than failures, and all twelve are fixed now
+(#56, `c2ddb4072` / `e3b7da79c` / `4a4d51c0c` / `c21d5c5eb`). The table is kept
+because it is the measurement, and because it says which of them a *scenario*
+was needed to find:
 
 | Where | What |
 | --- | --- |
