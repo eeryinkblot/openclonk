@@ -599,6 +599,13 @@ bool C4Application::ProcessCallback(const char *szMessage, int iProcess)
 
 void C4Application::Clear()
 {
+	// Startup data and fonts, freed here rather than in Quit(): that can run
+	// from inside a startup dialog's own message loop, where the objects it
+	// would delete are the ones whose methods are still on the stack. By here
+	// the stack has unwound, and the GUI screen that shares ownership of those
+	// dialogs is still alive -- Game.Clear() below destroys it.
+	C4Startup::Unload();
+	::GraphicsResource.ClearFonts();
 	Game.Clear();
 	NextMission.clear();
 	// stop timer
@@ -643,10 +650,11 @@ void C4Application::Quit()
 
 	// Save config if there was no loading error
 	if (Config.ConfigLoaded) Config.Save();
-	// make sure startup data is unloaded
-	C4Startup::Unload();
-	// fonts are loaded at start and never unloaded
-	::GraphicsResource.ClearFonts();
+	// Nothing may be freed here. This can be reached from a modal dialog's own
+	// message loop -- the first-run player-creation dialog runs one while
+	// C4StartupMainDlg::OnShown is still on the stack -- so the objects a quit
+	// would destroy are the ones whose methods that stack is inside of.
+	// Unloading is done in Clear(), once the stack has unwound.
 	// quit app
 	C4AbstractApp::Quit();
 	AppState = C4AS_Quit;
