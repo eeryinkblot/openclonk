@@ -847,12 +847,21 @@ jobs:
             sleep 1
           done
           sleep 5
+          # xvfb-run is a shell script and does not pass a signal on to what it
+          # started, so stopping $pid leaves the engine running -- which is how
+          # this step used to hand the next one a second engine to trip over.
+          # Ask the process table for the engine itself.
+          engine=$(pgrep -n -x openclonk || true)
           alive=0
-          kill -0 $pid 2>/dev/null && alive=1
-          kill $pid 2>/dev/null || true
-          sleep 2
+          [ -n "$engine" ] && alive=1
+          [ -n "$engine" ] && { kill -9 "$engine" 2>/dev/null || true; }
           kill -9 $pid 2>/dev/null || true
           wait $pid 2>/dev/null || true
+          for _ in $(seq 10); do pgrep -x openclonk >/dev/null || break; sleep 1; done
+          if pgrep -x openclonk >/dev/null; then
+            echo "::error::an engine is still running after this step stopped it"
+            exit 1
+          fi
 
           echo "::group::engine log"
           cat gui.log
@@ -934,7 +943,15 @@ jobs:
           # The signal has to reach the engine and not xvfb-run, which is what
           # $wrapper is. SIGTERM arrives as an SDL_QUIT, i.e. the same path as
           # closing the window; SIGKILL would test nothing.
-          engine=$(pgrep -x openclonk | head -1)
+          engines=$(pgrep -x openclonk | wc -l)
+          engine=$(pgrep -n -x openclonk || true)
+          if [ "$engines" -ne 1 ]; then
+            # Anything but one means an earlier step leaked an engine, and
+            # signalling the wrong one is how this step first hung for 45
+            # minutes: the leftover exits, this one never does.
+            echo "::error::expected exactly one openclonk process, found $engines"
+            status=1
+          fi
           if [ -z "$engine" ]; then
             echo "::error::no openclonk process to signal"
             status=1
@@ -947,6 +964,10 @@ jobs:
               status=1
             fi
           fi
+          # Bounded: xvfb-run outlives the engine by a moment, and a bare wait
+          # here is a step that hangs until the job timeout rather than fails.
+          for _ in $(seq 20); do kill -0 $wrapper 2>/dev/null || break; sleep 1; done
+          kill -9 $wrapper 2>/dev/null || true
           wait $wrapper 2>/dev/null || true
 
           echo "::group::engine log"
