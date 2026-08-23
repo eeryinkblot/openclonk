@@ -57,9 +57,3 @@ src/lib/Standard.cpp:144:10          # result *= base
 src/lib/Standard.cpp:145:10          # result += value
 src/lib/Standard.cpp:148:9           # result *= sign
 
-# --- memcmp with null ------------------------------------------------------
-#
-# StdBuf::Compare() passes both pointers straight to memcmp, which declares them
-# nonnull, so a zero-length compare of two empty buffers is undefined even
-# though it reads nothing. Reported twice at the same site, once per argument.
-src/lib/StdBuf.h:168:21              # std::memcmp(getPtr(iAt), pCData, iCSize)

@@ -165,6 +165,10 @@ public:
 	int Compare(const void *pCData, size_t iCSize, size_t iAt = 0) const
 	{
 		assert(iAt + iCSize <= getSize());
+		// memcmp declares both pointers nonnull, so comparing two empty buffers
+		// is undefined even though it reads nothing -- and an empty StdBuf has
+		// a null pointer, not a valid one.
+		if (!iCSize) return 0;
 		return std::memcmp(getPtr(iAt), pCData, iCSize);
 	}
 	// Grow the buffer
