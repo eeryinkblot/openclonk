@@ -303,15 +303,15 @@ C4Value C4AulExec::Exec(C4AulBCC *pCPos)
 				break;
 			case AB_Neg:  // -
 				CheckOpPar(C4V_Int, "-");
-				pCurVal->SetInt(-pCurVal->_getInt());
+				pCurVal->SetInt(WrapNeg(pCurVal->_getInt()));
 				break;
 			case AB_Inc: // ++
 				CheckOpPar(C4V_Int, "++");
-				pCurVal->SetInt(pCurVal->_getInt() + 1);
+				pCurVal->SetInt(WrapAdd(pCurVal->_getInt(), 1));
 				break;
 			case AB_Dec: // --
 				CheckOpPar(C4V_Int, "--");
-				pCurVal->SetInt(pCurVal->_getInt() - 1);
+				pCurVal->SetInt(WrapSub(pCurVal->_getInt(), 1));
 				break;
 			// postfix
 			case AB_Pow:  // **
@@ -339,7 +339,7 @@ C4Value C4AulExec::Exec(C4AulBCC *pCPos)
 			{
 				CheckOpPars(C4V_Int, C4V_Int, "*");
 				C4Value *pPar1 = pCurVal - 1, *pPar2 = pCurVal;
-				pPar1->SetInt(pPar1->_getInt() * pPar2->_getInt());
+				pPar1->SetInt(WrapMul(pPar1->_getInt(), pPar2->_getInt()));
 				PopValue();
 				break;
 			}
@@ -361,7 +361,7 @@ C4Value C4AulExec::Exec(C4AulBCC *pCPos)
 			{
 				CheckOpPars(C4V_Int, C4V_Int, "-");
 				C4Value *pPar1 = pCurVal - 1, *pPar2 = pCurVal;
-				pPar1->SetInt(pPar1->_getInt() - pPar2->_getInt());
+				pPar1->SetInt(WrapSub(pPar1->_getInt(), pPar2->_getInt()));
 				PopValue();
 				break;
 			}
@@ -369,7 +369,7 @@ C4Value C4AulExec::Exec(C4AulBCC *pCPos)
 			{
 				CheckOpPars(C4V_Int, C4V_Int, "+");
 				C4Value *pPar1 = pCurVal - 1, *pPar2 = pCurVal;
-				pPar1->SetInt(pPar1->_getInt() + pPar2->_getInt());
+				pPar1->SetInt(WrapAdd(pPar1->_getInt(), pPar2->_getInt()));
 				PopValue();
 				break;
 			}

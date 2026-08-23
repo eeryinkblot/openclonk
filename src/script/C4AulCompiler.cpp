@@ -895,7 +895,10 @@ int C4AulCompiler::CodegenAstVisitor::AddBCC(const char *TokenSPos, C4AulBCCType
 		// Join AB_INT + AB_Neg to AB_INT
 		if (eType == AB_Neg && pCPos1->bccType == AB_INT)
 		{
-			pCPos1->Par.i *= -1;
+			// Wrapping, like the AB_Neg this replaces: negating INT32_MIN is
+			// undefined in C++ and is -2147483648 in C4Script. Folding it at
+			// compile time must not answer differently from executing it.
+			pCPos1->Par.i = WrapNeg(pCPos1->Par.i);
 			return Fn->GetCodePos() - 1;
 		}
 	}

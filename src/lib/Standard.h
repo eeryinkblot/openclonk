@@ -50,6 +50,10 @@ inline int32_t WrapToInt32(uint32_t value)
 	       ? int32_t(value)
 	       : int32_t(value - uint32_t(INT32_MIN)) + INT32_MIN;
 }
+inline int32_t WrapAdd(int32_t a, int32_t b) { return WrapToInt32(uint32_t(a) + uint32_t(b)); }
+inline int32_t WrapSub(int32_t a, int32_t b) { return WrapToInt32(uint32_t(a) - uint32_t(b)); }
+inline int32_t WrapMul(int32_t a, int32_t b) { return WrapToInt32(uint32_t(a) * uint32_t(b)); }
+inline int32_t WrapNeg(int32_t a)            { return WrapToInt32(uint32_t(0) - uint32_t(a)); }
 
 // Small helpers
 template <class T> inline T Abs(T val) { return val > 0 ? val : -val; }

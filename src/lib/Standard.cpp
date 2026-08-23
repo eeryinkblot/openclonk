@@ -82,15 +82,18 @@ int Pow(int base, int exponent)
 {
 	if (exponent < 0) return 0;
 
-	int result = 1;
+	// Wrapping, because this is C4Script's ** operator: the language specifies
+	// two's-complement wraparound for integer arithmetic and the multiplications
+	// below overflow long before the exponent runs out.
+	int32_t result = 1;
 
 	if (exponent & 1) result = base;
 	exponent >>= 1;
 
 	while (exponent)
 	{
-		base *= base;
-		if (exponent & 1) result *= base;
+		base = WrapMul(base, base);
+		if (exponent & 1) result = WrapMul(result, base);
 		exponent >>= 1;
 	}
 

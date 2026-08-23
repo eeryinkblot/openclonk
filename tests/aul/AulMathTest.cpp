@@ -48,6 +48,35 @@ TEST_F(AulMathTest, Division)
 	EXPECT_EQ(C4VINT_MIN, RunExpr("-2147483648 / 1"));
 }
 
+TEST_F(AulMathTest, WraparoundIsTheSpecifiedBehaviour)
+{
+	// Bug1389 below asserts this for + and -, which is what made the engine's
+	// undefined signed arithmetic visible in the first place. The operators
+	// that are computed the same way are asserted here, so that the wraparound
+	// stays a decision rather than something the compiler happened to do.
+
+	// Multiplication: 2 * (2^31 - 1) is 2^32 - 2.
+	EXPECT_EQ(C4VInt(-2), RunExpr("2147483647 * 2"));
+	EXPECT_EQ(C4VInt(-2), RunExpr("2 * 2147483647"));
+	EXPECT_EQ(C4VInt(0), RunExpr("65536 * 65536"));
+
+	// Negation of the value that has no positive counterpart.
+	EXPECT_EQ(C4VINT_MIN, RunExpr("-2147483648"));
+	EXPECT_EQ(C4VINT_MIN, RunCode("var i = -2147483648; return -i;"));
+	// The same expression folded at compile time and executed at run time have
+	// to agree -- the compiler folds AB_INT + AB_Neg into a literal.
+	EXPECT_EQ(C4Value(true), RunCode("var i = 2147483648; return -2147483648 == -i;"));
+
+	// ** is a loop of multiplications and overflows long before the exponent
+	// runs out: 2^32 is zero in 32 bits.
+	EXPECT_EQ(C4VInt(0), RunExpr("2 ** 32"));
+	EXPECT_EQ(C4VInt(C4VINT_MIN.getInt()), RunExpr("2 ** 31"));
+
+	// ++ and -- at the boundary, which are their own bytecodes.
+	EXPECT_EQ(C4VINT_MIN, RunCode("var i = 2147483647; return ++i;"));
+	EXPECT_EQ(C4VINT_MAX, RunCode("var i = -2147483648; return --i;"));
+}
+
 TEST_F(AulMathTest, Bug1389)
 {
 	// 0001389: Aul integer overflow results in strange numbers on 64 bit

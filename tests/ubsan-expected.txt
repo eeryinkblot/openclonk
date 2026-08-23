@@ -20,18 +20,6 @@
 #
 # Measured on Linux, GCC 16.2.1, C++17, with -fno-sanitize=vptr (see the job).
 
-# --- the script engine's integer semantics -------------------------------
-#
-# C4Script guarantees two's-complement wraparound and tests/aul/AulMathTest.cpp
-# asserts it -- "2147483647 + 1" must equal INT_MIN. It is produced by plain
-# signed C++ arithmetic, which is undefined, so the guarantee rests on the
-# compiler not exercising a freedom it has. The fix is to compute in uint32_t
-# and truncate, not to loosen the tests. #54.
-src/script/C4AulExec.cpp:310:20      # ++ overflows
-src/script/C4AulExec.cpp:314:20      # -- underflows
-src/script/C4AulExec.cpp:364:18      # binary - underflows
-src/script/C4AulExec.cpp:372:18      # binary + overflows
-src/script/C4AulCompiler.cpp:898:18  # constant-folding negates INT_MIN, into the bytecode
 
 # --- landscape polygon rasterisation --------------------------------------
 #
